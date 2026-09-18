@@ -1,6 +1,7 @@
 import { and, eq, gte, lt, sql } from 'drizzle-orm'
 import Decimal from 'decimal.js'
 import { db, schema } from '@/db'
+import { startOfMonth, addMonths, daysInMonth as tzDaysInMonth, zonedParts, monthLabel, DEFAULT_TZ } from './time'
 
 const { accounts, categories, transactions, users, goals, debts } = schema
 
@@ -60,10 +61,14 @@ export interface CategoryTotal {
 
 const ZERO = new Decimal(0)
 
-export async function buildSnapshot(userId: number, now = new Date()): Promise<Snapshot> {
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-  const prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+export async function buildSnapshot(
+  userId: number,
+  now = new Date(),
+  tz = DEFAULT_TZ,
+): Promise<Snapshot> {
+  const monthStart = startOfMonth(now, tz)
+  const monthEnd = addMonths(now, 1, tz)
+  const prevStart = addMonths(now, -1, tz)
 
   const [user, current, previousRaw, balances, debtRows, efGoal] = await Promise.all([
     db.query.users.findFirst({ where: eq(users.id, userId) }),
@@ -90,7 +95,7 @@ export async function buildSnapshot(userId: number, now = new Date()): Promise<S
     ? incomeBasis.minus(realSpend).div(incomeBasis).mul(100)
     : null
 
-  const monthlyEssentialAvg = await averageMonthlyEssential(userId, now)
+  const monthlyEssentialAvg = await averageMonthlyEssential(userId, now, tz)
   const emergencyMonths = monthlyEssentialAvg && monthlyEssentialAvg.gt(0)
     ? balances.div(monthlyEssentialAvg)
     : null
@@ -103,11 +108,11 @@ export async function buildSnapshot(userId: number, now = new Date()): Promise<S
       )
     : null
 
-  const daysInPeriod = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const daysInPeriod = tzDaysInMonth(now, tz)
 
   return {
-    periodLabel: `Tháng ${now.getMonth() + 1}/${now.getFullYear()}`,
-    daysElapsed: now.getDate(),
+    periodLabel: monthLabel(now, tz),
+    daysElapsed: zonedParts(now, tz).day,
     daysInPeriod,
     income: current.income,
     incomeBasis,
@@ -203,9 +208,13 @@ async function liquidTotal(userId: number): Promise<Decimal> {
  * Dung trung binh thay vi thang hien tai vi thang nay co the moi di duoc
  * vai ngay - chia cho no se ra so thang quy khan cap cao gia tao.
  */
-async function averageMonthlyEssential(userId: number, now: Date): Promise<Decimal | null> {
-  const from = new Date(now.getFullYear(), now.getMonth() - 3, 1)
-  const to = new Date(now.getFullYear(), now.getMonth(), 1)
+async function averageMonthlyEssential(
+  userId: number,
+  now: Date,
+  tz: string,
+): Promise<Decimal | null> {
+  const from = addMonths(now, -3, tz)
+  const to = startOfMonth(now, tz)
 
   const [row] = await db
     .select({ total: sql<string>`sum(${transactions.amount})` })
@@ -222,13 +231,12 @@ async function averageMonthlyEssential(userId: number, now: Date): Promise<Decim
   const total = new Decimal(row?.total ?? 0)
   if (total.isZero()) {
     // Chua du lich su -> tam dung chinh thang nay, quy doi ve ca thang
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+    const monthStart = startOfMonth(now, tz)
+    const monthEnd = addMonths(now, 1, tz)
     const cur = await periodTotals(userId, monthStart, monthEnd)
     if (cur.essential.isZero()) return null
-    const daysElapsed = Math.max(now.getDate(), 1)
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-    return cur.essential.div(daysElapsed).mul(daysInMonth)
+    const daysElapsed = Math.max(zonedParts(now, tz).day, 1)
+    return cur.essential.div(daysElapsed).mul(tzDaysInMonth(now, tz))
   }
   return total.div(3)
 }

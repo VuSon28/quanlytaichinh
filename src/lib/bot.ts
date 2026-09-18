@@ -4,6 +4,7 @@ import { formatVnd, formatShort, parseAmount } from './money'
 import { parseTransaction } from './parser'
 import { buildSnapshot } from './metrics'
 import { evaluate, renderAssessment } from './rules'
+import { startOfDay, startOfMonth, addDays, addMonths, monthLabel, shortDate } from './time'
 import {
   getOrCreateUser, loadLearnedKeywords, learnKeyword, findCategoryByName,
   listCategories, getDefaultAccount, recordTransaction, deleteTransaction,
@@ -66,18 +67,18 @@ bot.command('start', async (ctx) => {
 
 bot.command('homnay', async (ctx) => {
   const u = await getOrCreateUser(ctx.from!.id)
-  const start = startOfDay(new Date())
-  const end = addDays(start, 1)
+  const start = startOfDay(new Date(), u.timezone)
+  const end = addDays(start, 1, u.timezone)
   await ctx.reply(await renderPeriod(u.id, start, end, 'Hôm nay'), { parse_mode: 'Markdown' })
 })
 
 bot.command('thang', async (ctx) => {
   const u = await getOrCreateUser(ctx.from!.id)
   const now = new Date()
-  const start = new Date(now.getFullYear(), now.getMonth(), 1)
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  const start = startOfMonth(now, u.timezone)
+  const end = addMonths(now, 1, u.timezone)
   await ctx.reply(
-    await renderPeriod(u.id, start, end, `Tháng ${now.getMonth() + 1}/${now.getFullYear()}`),
+    await renderPeriod(u.id, start, end, monthLabel(now, u.timezone)),
     { parse_mode: 'Markdown' },
   )
 })
@@ -88,7 +89,7 @@ bot.command('thang', async (ctx) => {
 
 bot.command('danhgia', async (ctx) => {
   const u = await getOrCreateUser(ctx.from!.id)
-  const snapshot = await buildSnapshot(u.id)
+  const snapshot = await buildSnapshot(u.id, new Date(), u.timezone)
   const insights = evaluate(snapshot)
 
   await ctx.reply(renderAssessment(snapshot, insights), { parse_mode: 'Markdown' })
@@ -134,9 +135,7 @@ bot.command('gannhat', async (ctx) => {
 
   const lines = rows.map((r) => {
     const sign = r.type === 'income' ? '+' : '−'
-    const when = new Date(r.occurredAt).toLocaleDateString('vi-VN', {
-      day: '2-digit', month: '2-digit',
-    })
+    const when = shortDate(new Date(r.occurredAt), u.timezone)
     const what = r.note || r.categoryName || 'Không ghi chú'
     return `\`#${r.id}\` ${when}  ${r.categoryIcon ?? '•'} ${what} — ${sign}${formatShort(r.amount)}`
   })
@@ -299,15 +298,6 @@ async function renderPeriod(userId: number, from: Date, to: Date, label: string)
   }
 
   return lines.join('\n')
-}
-
-function startOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate())
-}
-function addDays(d: Date, n: number) {
-  const x = new Date(d)
-  x.setDate(x.getDate() + n)
-  return x
 }
 
 /** Dung chung cho webhook (Vercel) va long polling (may cua ban). */
