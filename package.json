@@ -1,0 +1,36 @@
+{
+  "name": "finbot",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "db:generate": "drizzle-kit generate",
+    "db:push": "drizzle-kit push",
+    "db:studio": "drizzle-kit studio",
+    "test": "tsx scripts/test-parser.ts && tsx scripts/test-rules.ts",
+    "test:rules": "tsx scripts/test-rules.ts",
+    "check": "tsx scripts/check-env.ts",
+    "smoke": "tsx --env-file=.env.local scripts/smoke-test.ts",
+    "bot": "tsx --env-file=.env.local scripts/dev-bot.ts",
+    "setwebhook": "tsx --env-file=.env.local scripts/set-webhook.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.70.0",
+    "decimal.js": "^10.6.0",
+    "drizzle-orm": "^0.44.5",
+    "grammy": "^1.38.2",
+    "next": "^15.5.4",
+    "postgres": "^3.4.9",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.5",
+    "@types/react": "^19.1.13",
+    "drizzle-kit": "^0.31.5",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  }
+}
