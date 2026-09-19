@@ -4,7 +4,13 @@ import { formatVnd, formatShort, parseAmount } from './money'
 import { parseTransaction } from './parser'
 import { buildSnapshot } from './metrics'
 import { evaluate, renderAssessment } from './rules'
-import { startOfDay, startOfMonth, addDays, addMonths, monthLabel, shortDate } from './time'
+import {
+  startOfDay, startOfMonth, addDays, addMonths, monthLabel, shortDate,
+  zonedParts, daysInMonth as tzDaysInMonth,
+} from './time'
+import {
+  listBudgets, setBudget, removeBudget, findCategoryLoose, checkBudgetAlert,
+} from './budget'
 import {
   getOrCreateUser, loadLearnedKeywords, learnKeyword, findCategoryByName,
   listCategories, getDefaultAccount, recordTransaction, deleteTransaction,
@@ -57,6 +63,9 @@ bot.command('start', async (ctx) => {
     '/thang — tổng kết tháng này\n' +
     '/gannhat — 10 giao dịch gần nhất\n' +
     '/xoa — xoá giao dịch vừa ghi\n\n' +
+    '*Ngân sách*\n' +
+    '/ngansach — xem hạn mức tháng này\n' +
+    '/ngansach `Ăn ngoài 3tr` — đặt hạn mức\n\n' +
     '*Đánh giá tài chính*\n' +
     '/thunhap `25tr` — khai báo thu nhập tháng\n' +
     '/danhgia — nhận định & lời khuyên\n\n' +
@@ -127,6 +136,109 @@ bot.command('thunhap', async (ctx) => {
     { parse_mode: 'Markdown' },
   )
 })
+
+/* ------------------------------------------------------------------ *
+ * Ngan sach
+ * ------------------------------------------------------------------ */
+
+bot.command('ngansach', async (ctx) => {
+  const u = await getOrCreateUser(ctx.from!.id)
+  const arg = ctx.match?.trim()
+  const now = new Date()
+
+  // Khong tham so -> liet ke ngan sach thang nay
+  if (!arg) {
+    const rows = await listBudgets(u.id, now, u.timezone)
+    if (!rows.length) {
+      await ctx.reply(
+        '*Chưa đặt ngân sách nào*\n\n' +
+        'Đặt bằng cách nhắn: `/ngansach Ăn ngoài 3tr`\n\n' +
+        '_Tôi sẽ nhắc khi bạn dùng hết 80% và khi vượt 100%. ' +
+        'Chỉ đúng hai lần mỗi tháng cho mỗi mục — không làm phiền hơn._',
+        { parse_mode: 'Markdown' },
+      )
+      return
+    }
+
+    const p = zonedParts(now, u.timezone)
+    const daysLeft = tzDaysInMonth(now, u.timezone) - p.day
+    const lines = [`*Ngân sách ${monthLabel(now, u.timezone)}*`, `_Còn ${daysLeft} ngày_`, '']
+
+    for (const b of rows) {
+      const bar = progressBar(b.used)
+      const state = b.remaining.lt(0)
+        ? `vượt ${formatShort(b.remaining.abs())}`
+        : `còn ${formatShort(b.remaining)}`
+      lines.push(
+        `${b.icon ?? '•'} *${b.categoryName}*`,
+        `${bar} ${b.used.toFixed(0)}%  —  ${state}`,
+        `${formatShort(b.spent)} / ${formatShort(b.amount)}`,
+        '',
+      )
+    }
+    lines.push('_Xoá một mục: `/ngansach xoa Ăn ngoài`_')
+    await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' })
+    return
+  }
+
+  // "xoa <ten danh muc>"
+  const removeMatch = arg.match(/^(xoa|xoá)\s+(.+)$/i)
+  if (removeMatch) {
+    const cat = await findCategoryLoose(u.id, removeMatch[2])
+    if (!cat) return ctx.reply(`Không tìm thấy danh mục "${removeMatch[2]}".`)
+    await removeBudget(u.id, cat.id, now, u.timezone)
+    await ctx.reply(`🗑 Đã bỏ ngân sách cho ${cat.icon ?? ''} ${cat.name}.`)
+    return
+  }
+
+  // "<ten danh muc> <so tien>" - so tien luon o cuoi
+  const setMatch = arg.match(/^(.+?)\s+(\S+)$/)
+  if (!setMatch) {
+    await ctx.reply(
+      'Cú pháp: `/ngansach Ăn ngoài 3tr`',
+      { parse_mode: 'Markdown' },
+    )
+    return
+  }
+
+  const [, namePart, amountPart] = setMatch
+  const amount = parseAmount(amountPart)
+  if (!amount || amount.lte(0)) {
+    await ctx.reply(
+      `Không đọc được số tiền "${amountPart}". Thử: \`/ngansach Ăn ngoài 3tr\``,
+      { parse_mode: 'Markdown' },
+    )
+    return
+  }
+
+  const cat = await findCategoryLoose(u.id, namePart)
+  if (!cat) {
+    await ctx.reply(
+      `Không tìm thấy danh mục "${namePart}".\n` +
+      'Nhắn /ngansach để xem cách viết, hoặc /thang để xem tên các danh mục.',
+    )
+    return
+  }
+  if (cat.isIncome) {
+    await ctx.reply('Danh mục thu nhập không đặt ngân sách được.')
+    return
+  }
+
+  await setBudget(u.id, cat.id, amount, now, u.timezone)
+  await ctx.reply(
+    `✅ Ngân sách ${cat.icon ?? ''} *${cat.name}*: ${formatVnd(amount)}/tháng\n\n` +
+    '_Tôi sẽ nhắc khi dùng hết 80% và khi vượt 100%._',
+    { parse_mode: 'Markdown' },
+  )
+})
+
+/** Thanh tien do 10 o - de nhin la biet dang o dau ma khong can doc so */
+function progressBar(usedPercent: Decimal): string {
+  const filled = Math.min(10, Math.max(0, Math.round(usedPercent.toNumber() / 10)))
+  const over = usedPercent.gte(100)
+  return (over ? '🟥' : usedPercent.gte(80) ? '🟨' : '🟩').repeat(Math.max(filled, 1))
+    + '⬜'.repeat(10 - filled)
+}
 
 bot.command('gannhat', async (ctx) => {
   const u = await getOrCreateUser(ctx.from!.id)
@@ -205,6 +317,7 @@ bot.on('message:text', async (ctx) => {
         `\`#${tx.id}\` — sai thì /xoa`,
         { parse_mode: 'Markdown' },
       )
+      await warnIfOverBudget(ctx, u, parsed.type, cat.id)
       return
     }
   }
@@ -261,7 +374,48 @@ bot.callbackQuery(/^pick:(\d+)$/, async (ctx) => {
     `Lần sau gặp "${parsed.note}" tôi tự xếp đúng mục.\n\`#${tx.id}\``,
     { parse_mode: 'Markdown' },
   )
+  await warnIfOverBudget(ctx, u, parsed.type, categoryId)
 })
+
+/* ------------------------------------------------------------------ *
+ * Canh bao ngan sach
+ *
+ * Gui NGAY sau khi ghi giao dich, khong doi den cuoi thang. Mot canh bao
+ * "ban da vuot ngan sach" vao ngay 30 thi vo dung - luc do khong con gi
+ * de lam nua. Bao o moc 80% moi con kip xoay.
+ * ------------------------------------------------------------------ */
+
+async function warnIfOverBudget(
+  ctx: { reply: (t: string, o?: object) => Promise<unknown> },
+  user: { id: number; timezone: string },
+  txType: 'expense' | 'income',
+  categoryId: number,
+) {
+  if (txType !== 'expense') return
+
+  const alert = await checkBudgetAlert(user.id, categoryId, new Date(), user.timezone)
+  if (!alert) return
+
+  const head = alert.threshold >= 100
+    ? `🔴 *Vượt ngân sách ${alert.icon ?? ''} ${alert.categoryName}*`
+    : `🟡 *Sắp hết ngân sách ${alert.icon ?? ''} ${alert.categoryName}*`
+
+  const lines = [
+    head,
+    `Đã dùng ${formatVnd(alert.spent)} / ${formatVnd(alert.amount)}`,
+  ]
+
+  if (alert.remaining.lt(0)) {
+    lines.push(`Vượt *${formatVnd(alert.remaining.abs())}*, còn ${alert.daysLeft} ngày nữa mới hết tháng.`)
+  } else {
+    lines.push(`Còn *${formatVnd(alert.remaining)}* cho ${alert.daysLeft} ngày.`)
+    if (alert.perDayLeft) {
+      lines.push(`→ Khoảng ${formatVnd(alert.perDayLeft)}/ngày để không vượt.`)
+    }
+  }
+
+  await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' })
+}
 
 /* ------------------------------------------------------------------ *
  * Bao cao
