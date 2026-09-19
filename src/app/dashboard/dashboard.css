@@ -1,0 +1,266 @@
+/*
+ * Bang mau lay tu bo mau da qua kiem dinh mu mau va do tuong phan.
+ *
+ * Che do toi KHONG phai lat nguoc che do sang: tung buoc mau duoc chon
+ * rieng cho nen toi va kiem dinh lai tren chinh nen do. Lat nguoc may
+ * moc se cho ra mau qua choi hoac qua chim tren nen toi.
+ */
+
+.page {
+  color-scheme: light;
+
+  --surface-1: #fcfcfb;
+  --plane: #f9f9f7;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #898781;
+  --grid: #e1e0d9;
+  --baseline: #c3c2b7;
+
+  --series-1: #2a78d6;  /* xanh duong - thu, tai san rong */
+  --series-2: #eb6834;  /* cam - chi */
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --critical: #d03b3b;
+
+  background: var(--plane);
+  color: var(--text-primary);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  line-height: 1.55;
+  margin: 0 auto;
+  max-width: 980px;
+  padding: 24px 16px 64px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .page {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --plane: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+  }
+}
+
+:root[data-theme="dark"] .page {
+  color-scheme: dark;
+  --surface-1: #1a1a19;
+  --plane: #0d0d0d;
+  --text-primary: #ffffff;
+  --text-secondary: #c3c2b7;
+  --grid: #2c2c2a;
+  --baseline: #383835;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+}
+
+body { margin: 0; background: #f9f9f7; }
+@media (prefers-color-scheme: dark) { body { background: #0d0d0d; } }
+
+/* ---------------- Bo cuc ---------------- */
+
+h1 { font-size: 1.5rem; margin: 0; letter-spacing: -0.02em; }
+h2 { font-size: 1rem; margin: 0 0 4px; letter-spacing: -0.01em; }
+.muted { color: var(--text-muted); }
+.small { font-size: 0.85rem; }
+code {
+  background: var(--grid);
+  border-radius: 4px;
+  font-size: 0.9em;
+  padding: 1px 5px;
+}
+
+.head { margin-bottom: 20px; }
+.head p { margin: 2px 0 0; }
+
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--grid);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  padding: 16px;
+}
+.card > p:first-of-type { margin-top: 0; }
+
+.two-col { display: grid; gap: 16px; grid-template-columns: 1fr; }
+@media (min-width: 760px) { .two-col { grid-template-columns: 1fr 1fr; } }
+
+.locked { text-align: center; padding-top: 80px; }
+.foot { margin-top: 24px; text-align: center; }
+.empty { color: var(--text-muted); font-size: 0.9rem; margin: 8px 0; }
+
+/* ---------------- O so lieu ---------------- */
+
+.tiles {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  margin-bottom: 16px;
+}
+@media (min-width: 760px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+
+.tile {
+  background: var(--surface-1);
+  border: 1px solid var(--grid);
+  border-radius: 12px;
+  padding: 14px;
+}
+.tile-label { color: var(--text-muted); font-size: 0.8rem; }
+.tile-value {
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin-top: 2px;
+}
+.tile-sub { color: var(--text-muted); font-size: 0.78rem; margin-top: 2px; }
+
+/* Mau trang thai chi dung cho TRANG THAI, khong dung lam mau chuoi so lieu */
+.tone-good { color: var(--good); }
+.tone-warning { color: #8a6000; }
+.tone-critical { color: var(--critical); }
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .tone-warning { color: var(--warning); }
+}
+
+/* ---------------- Bieu do ---------------- */
+
+.chart-wrap { margin-top: 8px; }
+.chart { display: block; width: 100%; height: auto; overflow: visible; }
+
+.grid { stroke: var(--grid); stroke-width: 1; }
+.baseline { stroke: var(--baseline); stroke-width: 1; }
+.crosshair { stroke: var(--baseline); stroke-width: 1; stroke-dasharray: 3 3; }
+.axis-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.line-1 {
+  fill: none;
+  stroke: var(--series-1);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.area-1 { fill: var(--series-1); opacity: 0.10; }
+.dot-1 {
+  fill: var(--series-1);
+  /* Vien cung mau nen: tach cham khoi duong khi chung chong nhau */
+  stroke: var(--surface-1);
+  stroke-width: 2;
+}
+
+.bar-1 { fill: var(--series-1); }
+.bar-2 { fill: var(--series-2); }
+.bar-active { opacity: 0.82; }
+
+.legend {
+  color: var(--text-secondary);
+  display: flex;
+  font-size: 0.85rem;
+  gap: 16px;
+  margin-top: 8px;
+}
+.legend-item { align-items: center; display: inline-flex; gap: 6px; }
+
+.swatch {
+  border-radius: 3px;
+  display: inline-block;
+  height: 10px;
+  width: 10px;
+}
+.swatch-1 { background: var(--series-1); }
+.swatch-2 { background: var(--series-2); }
+
+.readout {
+  align-items: center;
+  color: var(--text-secondary);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  gap: 14px;
+  margin-top: 10px;
+  min-height: 1.5em;
+}
+.readout span { align-items: center; display: inline-flex; gap: 6px; }
+.readout strong { color: var(--text-primary); }
+
+/* ---------------- Thanh ngang ---------------- */
+
+.hbars, .meters, .insights { list-style: none; margin: 12px 0 0; padding: 0; }
+.hbars li, .meters li { margin-bottom: 14px; }
+
+.hbar-head, .meter-head {
+  display: flex;
+  font-size: 0.9rem;
+  gap: 12px;
+  justify-content: space-between;
+}
+.hbar-name, .meter-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar-value { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+.hbar-track, .meter-track {
+  background: var(--grid);
+  border-radius: 4px;
+  height: 8px;
+  margin-top: 5px;
+  overflow: hidden;
+}
+.hbar-fill { background: var(--series-1); border-radius: 4px; height: 100%; }
+.meter-fill { border-radius: 4px; height: 100%; }
+.meter-fill.tone-good { background: var(--good); }
+.meter-fill.tone-warning { background: var(--warning); }
+.meter-fill.tone-critical { background: var(--critical); }
+
+.hbar-sub, .meter-sub {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  margin-top: 3px;
+}
+.meter-state { font-size: 0.82rem; white-space: nowrap; }
+
+/* ---------------- Nhan dinh ---------------- */
+
+.insights li {
+  border-left: 3px solid var(--grid);
+  margin-bottom: 14px;
+  padding-left: 12px;
+}
+.insights li.sev-3 { border-left-color: var(--critical); }
+.insights li.sev-2 { border-left-color: var(--warning); }
+.insights li.sev-1 { border-left-color: var(--good); }
+.insight-title { font-weight: 620; }
+.insights p { color: var(--text-secondary); font-size: 0.9rem; margin: 3px 0 0; }
+.insight-action { color: var(--text-primary) !important; }
+
+/* ---------------- Bang so lieu ---------------- */
+
+details.card summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style-position: inside;
+}
+.data-table {
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  margin-top: 12px;
+  width: 100%;
+}
+.data-table th, .data-table td {
+  border-bottom: 1px solid var(--grid);
+  padding: 6px 8px;
+  text-align: right;
+}
+.data-table th:first-child, .data-table td:first-child { text-align: left; }
+.data-table th { color: var(--text-muted); font-weight: 600; }

@@ -18,6 +18,7 @@ import {
   listAssets, upsertAsset, findAssetLoose, archiveAsset, iconFor,
   listDebts, upsertDebt, findDebtLoose, removeDebt, snapshotNetWorth,
 } from './assets'
+import { makeLoginToken } from './dashboard-auth'
 import {
   getOrCreateUser, loadLearnedKeywords, learnKeyword, findCategoryByName,
   listCategories, getDefaultAccount, recordTransaction, deleteTransaction,
@@ -82,6 +83,8 @@ bot.command('start', async (ctx) => {
     '/taisan `vàng 50tr` — khai tài sản\n' +
     '/no `thẻ tín dụng 20tr 24%` — khai nợ\n' +
     '/taisanrong — giá trị tài sản ròng\n\n' +
+    '*Web*\n' +
+    '/web — mở dashboard có biểu đồ\n\n' +
     '*Import sao kê*\n' +
     'Gửi thẳng file .csv hoặc .xlsx từ app ngân hàng vào đây.\n' +
     'Tôi đọc, tự phân loại, cho bạn xem trước rồi mới ghi.\n\n' +
@@ -321,6 +324,34 @@ bot.command('xoa', async (ctx) => {
   const deleted = await deleteTransaction(u.id, targetId)
   if (!deleted) return ctx.reply('Không tìm thấy giao dịch đó.')
   await ctx.reply(`🗑 Đã xoá: ${deleted.note || 'giao dịch'} — ${formatVnd(deleted.amount)}`)
+})
+
+bot.command('web', async (ctx) => {
+  const u = await getOrCreateUser(ctx.from!.id)
+  /**
+   * Vercel tu dat VERCEL_PROJECT_PRODUCTION_URL, nen khong bat nguoi dung
+   * phai them mot bien moi truong nua chi de bot biet dia chi cua chinh
+   * no. APP_URL van duoc uu tien neu co, cho truong hop ten mien rieng.
+   */
+  const auto = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  const base = (process.env.APP_URL || (auto ? `https://${auto}` : ''))
+    .replace(/\/$/, '')
+
+  if (!base) {
+    await ctx.reply(
+      'Chưa cấu hình địa chỉ web (biến APP_URL). Dashboard tạm thời chưa dùng được.',
+    )
+    return
+  }
+
+  const link = `${base}/dashboard/auth?t=${makeLoginToken(u.id)}`
+  await ctx.reply(
+    `🖥 *Dashboard của bạn*\n\n${link}\n\n` +
+    '_Link này sống 15 phút. Mở xong là máy nhớ bạn trong 30 ngày, ' +
+    'không phải lấy link lại mỗi lần._\n\n' +
+    'Đừng chuyển tiếp link cho ai — ai mở được cũng xem được toàn bộ sổ của bạn.',
+    { parse_mode: 'Markdown', link_preview_options: { is_disabled: true } },
+  )
 })
 
 /* ------------------------------------------------------------------ *

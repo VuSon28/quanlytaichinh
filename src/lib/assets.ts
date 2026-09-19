@@ -1,4 +1,4 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import Decimal from 'decimal.js'
 import { db, schema } from '@/db'
 import { normalize } from './categories'
@@ -83,15 +83,23 @@ export async function listAssets(userId: number): Promise<AssetRow[]> {
   })
   if (!rows.length) return []
 
-  // Gia tri moi nhat cua tung tai san
+  /**
+   * Gia tri moi nhat cua tung tai san, CHI cua nguoi dung nay.
+   *
+   * DISTINCT ON de database tra ve dung mot dong cho moi tai san thay vi
+   * toan bo lich su. Thieu menh de WHERE o day tung lam truy van quet ca
+   * bang cua moi nguoi dung va cham den muc Supabase huy lenh - va ve
+   * nguyen tac, du lieu cua nguoi khac cung khong duoc phep di qua day.
+   */
+  const ids = rows.map((r) => r.id)
   const latest = await db
     .select({
       assetId: assetSnapshots.assetId,
       value: assetSnapshots.value,
-      takenOn: assetSnapshots.takenOn,
     })
     .from(assetSnapshots)
-    .orderBy(desc(assetSnapshots.takenOn))
+    .where(inArray(assetSnapshots.assetId, ids))
+    .orderBy(assetSnapshots.assetId, desc(assetSnapshots.takenOn))
 
   const valueOf = new Map<number, Decimal>()
   for (const s of latest) {
