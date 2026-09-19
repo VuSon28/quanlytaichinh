@@ -44,6 +44,8 @@ export interface Snapshot {
   /** liquidAssets / chi thiet yeu trung binh thang */
   emergencyMonths: Decimal | null
   monthlyEssentialAvg: Decimal | null
+  /** false khi chua khai so du that - moi phep tinh quy khan cap deu vo nghia */
+  balanceDeclared: boolean
 
   byCategory: CategoryTotal[]
   /** So voi cung ky thang truoc */
@@ -96,9 +98,17 @@ export async function buildSnapshot(
     : null
 
   const monthlyEssentialAvg = await averageMonthlyEssential(userId, now, tz)
-  const emergencyMonths = monthlyEssentialAvg && monthlyEssentialAvg.gt(0)
+
+  /**
+   * So du am nghia la nguoi dung chua khai so du that: vi bat dau tu 0,
+   * ghi chi tieu vao thi tru xuong duoi khong. Luc do KHONG duoc tinh
+   * quy khan cap - se ra "du -0,8 thang", vua vo nghia vua gay hoang
+   * mang. Tra null de bo luat biet ma nhac khai so du thay vi phan bua.
+   */
+  const emergencyMonths = monthlyEssentialAvg?.gt(0) && balances.gt(0)
     ? balances.div(monthlyEssentialAvg)
     : null
+  const balanceDeclared = balances.gt(0)
 
   const totalDebt = debtRows.reduce((s, d) => s.plus(new Decimal(d.outstanding)), ZERO)
   const worstDebtRate = debtRows.length
@@ -127,6 +137,7 @@ export async function buildSnapshot(
     worstDebtRate,
     emergencyMonths,
     monthlyEssentialAvg,
+    balanceDeclared,
     byCategory: current.byCategory,
     previous: previousRaw.expense.isZero() && !previousRaw.byCategory.length
       ? null

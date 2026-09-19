@@ -124,6 +124,28 @@ const savingsRate: Rule = (s) => {
   }
 }
 
+/**
+ * Chua khai so du thi khong the noi gi ve quy khan cap.
+ *
+ * Bot bat dau voi vi rong. Ban ghi chi tieu vao thi so du tut xuong am -
+ * khong phai vi ban het tien, ma vi bot chua bao gio duoc biet ban co
+ * bao nhieu. Tinh quy khan cap tren con so do se ra "du -0,8 thang",
+ * vua sai vua gay hoang mang. Tha nhac khai bao con hon phan bua.
+ */
+const noBalanceDeclared: Rule = (s) => {
+  if (s.balanceDeclared) return null
+  if (!s.monthlyEssentialAvg || s.monthlyEssentialAvg.lte(0)) return null
+  return {
+    code: 'no_balance_declared',
+    severity: 2,
+    title: 'Chưa biết bạn đang có bao nhiêu tiền',
+    body:
+      'Không có con số này thì không tính được quỹ khẩn cấp — thước đo trả lời ' +
+      'câu hỏi quan trọng nhất: mất thu nhập thì sống được mấy tháng.',
+    action: 'Nhắn `/sodu 30tr` để khai số dư hiện có (tiền mặt + ngân hàng).',
+  }
+}
+
 const emergencyFund: Rule = (s) => {
   if (!s.emergencyMonths || !s.monthlyEssentialAvg) return null
   const m = s.emergencyMonths
@@ -270,6 +292,7 @@ const spendingPace: Rule = (s) => {
 
 const RULES: Rule[] = [
   noIncomeBasis,
+  noBalanceDeclared,
   savingsRate,
   emergencyFund,
   highInterestDebt,

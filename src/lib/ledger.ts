@@ -278,3 +278,20 @@ export async function totalsBetween(
   byCategory.sort((a, b) => b.total.comparedTo(a.total))
   return { expense, income, byCategory }
 }
+
+/**
+ * Dat lai so du vi mac dinh.
+ *
+ * Bot bat dau voi vi rong, nen truoc khi nguoi dung khai so du that thi
+ * moi phep tinh lien quan den tai san deu vo nghia. Ham nay ghi DE len
+ * so du hien tai chu khong cong them - nguoi dung dang bao "toi dang co
+ * tung nay", khong phai "toi vua nhan them tung nay".
+ */
+export async function setAccountBalance(userId: number, amount: Decimal) {
+  const account = await getDefaultAccount(userId)
+  if (!account) return null
+  await db.update(accounts)
+    .set({ balance: amount.toFixed(2) })
+    .where(eq(accounts.id, account.id))
+  return account
+}

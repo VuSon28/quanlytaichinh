@@ -15,6 +15,7 @@
     "check": "tsx scripts/check-env.ts",
     "smoke": "tsx --env-file=.env.local scripts/smoke-test.ts && tsx --env-file=.env.local scripts/test-budget.ts",
     "test:budget": "tsx --env-file=.env.local scripts/test-budget.ts",
+    "test:digest": "tsx --env-file=.env.local scripts/test-digest.ts",
     "bot": "tsx --env-file=.env.local scripts/dev-bot.ts",
     "setwebhook": "tsx --env-file=.env.local scripts/set-webhook.ts"
   },

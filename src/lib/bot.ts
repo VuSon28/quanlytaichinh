@@ -14,7 +14,7 @@ import {
 import {
   getOrCreateUser, loadLearnedKeywords, learnKeyword, findCategoryByName,
   listCategories, getDefaultAccount, recordTransaction, deleteTransaction,
-  listRecent, totalsBetween, setMonthlyIncome, saveInsights,
+  listRecent, totalsBetween, setMonthlyIncome, saveInsights, setAccountBalance,
 } from './ledger'
 
 const OWNER_ID = Number(process.env.OWNER_TELEGRAM_ID || 0)
@@ -68,8 +68,9 @@ bot.command('start', async (ctx) => {
     '/ngansach `Ăn ngoài 3tr` — đặt hạn mức\n\n' +
     '*Đánh giá tài chính*\n' +
     '/thunhap `25tr` — khai báo thu nhập tháng\n' +
+    '/sodu `30tr` — khai số dư hiện có\n' +
     '/danhgia — nhận định & lời khuyên\n\n' +
-    '_Khai báo thu nhập trước, rồi /danhgia mới tính được tỷ lệ tiết kiệm._',
+    '_Khai /thunhap và /sodu trước, rồi /danhgia mới đủ dữ liệu để đánh giá._',
     { parse_mode: 'Markdown' },
   )
 })
@@ -133,6 +134,39 @@ bot.command('thunhap', async (ctx) => {
   await ctx.reply(
     `✅ Đã ghi thu nhập hàng tháng: *${formatVnd(amount)}*\n\n` +
     'Nhắn /danhgia để xem đánh giá tài chính.',
+    { parse_mode: 'Markdown' },
+  )
+})
+
+bot.command('sodu', async (ctx) => {
+  const u = await getOrCreateUser(ctx.from!.id)
+  const arg = ctx.match?.trim()
+  const account = await getDefaultAccount(u.id)
+
+  if (!arg) {
+    const cur = account ? formatVnd(account.balance) : 'chưa có ví'
+    await ctx.reply(
+      `Số dư hiện tại: *${cur}*\n\n` +
+      'Đặt lại bằng cách nhắn: `/sodu 30tr`\n\n' +
+      '_Khai tổng tiền bạn đang thực có — tiền mặt cộng số dư ngân hàng. ' +
+      'Không có con số này thì không tính được quỹ khẩn cấp._',
+      { parse_mode: 'Markdown' },
+    )
+    return
+  }
+
+  const amount = parseAmount(arg)
+  if (!amount || amount.lt(0)) {
+    await ctx.reply('Không đọc được số tiền. Thử: `/sodu 30tr`', { parse_mode: 'Markdown' })
+    return
+  }
+
+  const updated = await setAccountBalance(u.id, amount)
+  if (!updated) return ctx.reply('Không tìm thấy ví. Nhắn /start trước.')
+
+  await ctx.reply(
+    `✅ Số dư: *${formatVnd(amount)}*\n\n` +
+    'Từ giờ mỗi giao dịch sẽ cộng trừ vào đây. Nhắn /danhgia để xem quỹ khẩn cấp.',
     { parse_mode: 'Markdown' },
   )
 })

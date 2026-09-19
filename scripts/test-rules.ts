@@ -33,6 +33,7 @@ function baseline(over: Partial<Snapshot> = {}): Snapshot {
     worstDebtRate: null,
     emergencyMonths: D(5),
     monthlyEssentialAvg: D(8_000_000),
+    balanceDeclared: true,
     byCategory: [
       { name: 'Nhà ở', icon: '🏠', kind: 'essential', total: D(5_000_000) },
       { name: 'Ăn uống thiết yếu', icon: '🍚', kind: 'essential', total: D(3_000_000) },
@@ -161,6 +162,24 @@ expectCodes('nhà ở chiếm 50% → bình thường, không cảnh báo',
     ],
   }),
   [], ['concentration_high'])
+
+console.log('\n── Chưa khai số dư ──')
+{
+  // Loi that tung gap khi chay thu bao cao: vi bat dau tu 0, ghi chi tieu
+  // vao thi so du am, va bot bao "quy khan cap du -0,8 thang" - vua vo
+  // nghia vua gay hoang mang.
+  expectCodes('số dư âm → nhắc khai báo, KHÔNG phán về quỹ khẩn cấp',
+    baseline({ balanceDeclared: false, liquidAssets: D(-7_900_000), emergencyMonths: null }),
+    ['no_balance_declared'],
+    ['ef_below_1m', 'ef_below_min', 'ef_ok', 'ef_strong'])
+
+  expectCodes('số dư bằng 0 → cũng nhắc khai báo',
+    baseline({ balanceDeclared: false, liquidAssets: D(0), emergencyMonths: null }),
+    ['no_balance_declared'])
+
+  expectCodes('đã khai số dư → không nhắc nữa',
+    baseline(), [], ['no_balance_declared'])
+}
 
 console.log('\n── Thứ tự ưu tiên: cảnh báo nặng lên trước ──')
 {
