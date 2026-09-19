@@ -53,6 +53,17 @@ export const users = pgTable('users', {
   digestHour: integer('digest_hour').notNull().default(20),
   weeklyDigestDow: integer('weekly_digest_dow').notNull().default(0), // 0 = Chu nhat
 
+  /**
+   * Ngay da gui bao cao gan nhat, theo lich dia phuong cua nguoi dung.
+   *
+   * Cron cua Vercel la "co gang gui": co the bo sot mot lan chay, va
+   * cung co the goi mot lan chay hai lan. Cot nay bien viec gui bao cao
+   * thanh viec lam duoc phep lap lai ma khong gay hai - da gui hom nay
+   * thi lan goi thu hai khong lam gi, va neu hom qua bi sot thi hom nay
+   * van gui binh thuong.
+   */
+  lastDigestOn: date('last_digest_on'),
+
   onboardedAt: timestamp('onboarded_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 })

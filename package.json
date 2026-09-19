@@ -15,14 +15,16 @@
     "test:time": "tsx scripts/test-time.ts",
     "test:rules": "tsx scripts/test-rules.ts",
     "check": "tsx scripts/check-env.ts",
-    "smoke": "tsx --env-file=.env.local scripts/smoke-test.ts && tsx --env-file=.env.local scripts/test-budget.ts && tsx --env-file=.env.local scripts/test-import.ts && tsx --env-file=.env.local scripts/test-assets.ts && tsx --env-file=.env.local scripts/test-dashboard.ts",
+    "smoke": "tsx --env-file=.env.local scripts/smoke-test.ts && tsx --env-file=.env.local scripts/test-budget.ts && tsx --env-file=.env.local scripts/test-import.ts && tsx --env-file=.env.local scripts/test-assets.ts && tsx --env-file=.env.local scripts/test-dashboard.ts && tsx --env-file=.env.local scripts/test-cron.ts",
     "test:assets": "tsx --env-file=.env.local scripts/test-assets.ts",
     "db:migrate": "tsx --env-file=.env.local scripts/migrate-networth.ts",
     "test:budget": "tsx --env-file=.env.local scripts/test-budget.ts",
     "test:digest": "tsx --env-file=.env.local scripts/test-digest.ts",
     "bot": "tsx --env-file=.env.local scripts/dev-bot.ts",
     "setwebhook": "tsx --env-file=.env.local scripts/set-webhook.ts",
-    "test:dashboard": "tsx --env-file=.env.local scripts/test-dashboard.ts"
+    "test:dashboard": "tsx --env-file=.env.local scripts/test-dashboard.ts",
+    "test:cron": "tsx --env-file=.env.local scripts/test-cron.ts",
+    "db:migrate:digest": "tsx --env-file=.env.local scripts/migrate-digest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.0",

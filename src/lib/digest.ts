@@ -47,16 +47,44 @@ export async function buildDueDigests(now: Date): Promise<Digest[]> {
   for (const u of users) {
     const tz = u.timezone
     const p = zonedParts(now, tz)
+    const today = localDateKey(now, tz)
 
-    // Chua den gio nhan bao cao cua nguoi nay
-    if (p.hour !== u.digestHour) continue
+    /**
+     * Hai dieu kien, va co y khong kiem tra "dung gio X".
+     *
+     * Cron cua Vercel o goi mien phi co the nao trong khoang mot tieng,
+     * va tai lieu cua ho noi ro: mot lan chay co the bi bo sot, hoac bi
+     * goi hai lan. Neu doi dung gio thi mot lan tre la mat bao cao ca
+     * ngay; neu khong chan trung thi mot lan goi lap la hai tin nhan.
+     *
+     * Nen: da qua gio hen, VA hom nay chua gui. Nhu vay lan goi thu hai
+     * trong ngay khong lam gi, con mot ngay bi sot thi hom sau van gui.
+     */
+    if (p.hour < u.digestHour) continue
+    if (u.lastDigestOn === today) continue
 
     const kind = pickKind(now, tz, u.weeklyDigestDow)
     const text = await renderDigest(u.id, kind, now, tz)
+
+    /**
+     * Danh dau da gui KE CA khi khong co gi de noi. Neu chi danh dau khi
+     * co noi dung thi mot ngay im lang se khien moi lan cron chay lai
+     * deu tinh toan lai tu dau - ton cong ma khong duoc gi.
+     */
+    await db.update(schema.users)
+      .set({ lastDigestOn: today })
+      .where(eq(schema.users.id, u.id))
+
     if (text) out.push({ telegramId: u.telegramId, text })
   }
 
   return out
+}
+
+/** Ngay theo lich dia phuong, dang 'YYYY-MM-DD' */
+function localDateKey(now: Date, tz: string): string {
+  const p = zonedParts(now, tz)
+  return `${p.year}-${String(p.month + 1).padStart(2, '0')}-${String(p.day).padStart(2, '0')}`
 }
 
 /** Ngay cuoi thang uu tien hon bao cao tuan, de khong gui hai tin lien nhau */
