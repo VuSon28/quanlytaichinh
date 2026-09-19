@@ -24,7 +24,8 @@
     "setwebhook": "tsx --env-file=.env.local scripts/set-webhook.ts",
     "test:dashboard": "tsx --env-file=.env.local scripts/test-dashboard.ts",
     "test:cron": "tsx --env-file=.env.local scripts/test-cron.ts",
-    "db:migrate:digest": "tsx --env-file=.env.local scripts/migrate-digest.ts"
+    "db:migrate:digest": "tsx --env-file=.env.local scripts/migrate-digest.ts",
+    "setcommands": "tsx --env-file=.env.local scripts/set-commands.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.70.0",
