@@ -5,6 +5,7 @@ import { formatVnd, formatShort } from './money'
 import { buildSnapshot } from './metrics'
 import { evaluate } from './rules'
 import { listBudgets } from './budget'
+import { snapshotNetWorth } from './assets'
 import { totalsBetween } from './ledger'
 import {
   startOfDay, startOfMonth, addDays, addMonths, zonedParts,
@@ -161,6 +162,13 @@ async function renderWeekly(userId: number, now: Date, tz: string): Promise<stri
  * ------------------------------------------------------------------ */
 
 async function renderMonthly(userId: number, now: Date, tz: string): Promise<string | null> {
+  /**
+   * Chup gia tri tai san rong truoc khi viet bao cao. Cuoi thang la moc
+   * tu nhien de danh dau, va khong chup thi vinh vien khong ve duoc
+   * duong tang truong - so du vi chi luu trang thai hien tai.
+   */
+  const nw = await snapshotNetWorth(userId, now, tz)
+
   const start = startOfMonth(now, tz)
   const end = addMonths(now, 1, tz)
   const cur = await totalsBetween(userId, start, end)
@@ -193,6 +201,17 @@ async function renderMonthly(userId: number, now: Date, tz: string): Promise<str
     for (const i of top) {
       lines.push('', `${i.severity === 3 ? '🔴' : '🟡'} *${i.title}*`)
       if (i.action) lines.push(`→ ${i.action}`)
+    }
+  }
+
+  if (!nw.total.isZero()) {
+    lines.push('', `*Tài sản ròng: ${formatVnd(nw.total)}*`)
+    if (nw.previous) {
+      const diff = nw.total.minus(nw.previous.total)
+      if (!diff.isZero()) {
+        const arrow = diff.gt(0) ? '▲' : '▼'
+        lines.push(`${arrow} ${formatShort(diff.abs())} so với lần chụp trước`)
+      }
     }
   }
 

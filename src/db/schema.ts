@@ -259,3 +259,28 @@ export const pendingActions = pgTable('pending_actions', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('pending_user_idx').on(t.userId)])
+
+/* ------------------------------------------------------------------ *
+ * Anh chup gia tri tai san rong theo thoi gian
+ *
+ * Tinh duoc tu du lieu hien tai bat cu luc nao, nhung KHONG dung lai
+ * duoc qua khu: so du vi va gia tri tai san chi luu trang thai hien tai,
+ * khong luu lich su. Nen phai chup dinh ky va cat rieng - day la thu duy
+ * nhat cho biet ban dang di len hay di xuong.
+ * ------------------------------------------------------------------ */
+
+export const netWorthSnapshots = pgTable('net_worth_snapshots', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  userId: bigint('user_id', { mode: 'number' }).notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  takenOn: date('taken_on').notNull(),
+
+  /** Tien mat + ngan hang + tiet kiem + vi dien tu */
+  liquid: numeric('liquid', { precision: 15, scale: 2 }).notNull(),
+  /** Tai san dau tu: co phieu, quy, vang, crypto, bat dong san... */
+  invested: numeric('invested', { precision: 15, scale: 2 }).notNull(),
+  /** Tong du no */
+  debt: numeric('debt', { precision: 15, scale: 2 }).notNull(),
+  /** liquid + invested - debt */
+  total: numeric('total', { precision: 15, scale: 2 }).notNull(),
+}, (t) => [uniqueIndex('nw_user_date_idx').on(t.userId, t.takenOn)])

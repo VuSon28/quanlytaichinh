@@ -15,6 +15,10 @@ import {
   parseStatementFile, prepareImport, commitImport, type ImportPreview,
 } from './import'
 import {
+  listAssets, upsertAsset, findAssetLoose, archiveAsset, iconFor,
+  listDebts, upsertDebt, findDebtLoose, removeDebt, snapshotNetWorth,
+} from './assets'
+import {
   getOrCreateUser, loadLearnedKeywords, learnKeyword, findCategoryByName,
   listCategories, getDefaultAccount, recordTransaction, deleteTransaction,
   listRecent, totalsBetween, setMonthlyIncome, saveInsights, setAccountBalance,
@@ -74,6 +78,10 @@ bot.command('start', async (ctx) => {
     '/thunhap `25tr` — khai báo thu nhập tháng\n' +
     '/sodu `30tr` — khai số dư hiện có\n' +
     '/danhgia — nhận định & lời khuyên\n\n' +
+    '*Tài sản & nợ*\n' +
+    '/taisan `vàng 50tr` — khai tài sản\n' +
+    '/no `thẻ tín dụng 20tr 24%` — khai nợ\n' +
+    '/taisanrong — giá trị tài sản ròng\n\n' +
     '*Import sao kê*\n' +
     'Gửi thẳng file .csv hoặc .xlsx từ app ngân hàng vào đây.\n' +
     'Tôi đọc, tự phân loại, cho bạn xem trước rồi mới ghi.\n\n' +
@@ -313,6 +321,233 @@ bot.command('xoa', async (ctx) => {
   const deleted = await deleteTransaction(u.id, targetId)
   if (!deleted) return ctx.reply('Không tìm thấy giao dịch đó.')
   await ctx.reply(`🗑 Đã xoá: ${deleted.note || 'giao dịch'} — ${formatVnd(deleted.amount)}`)
+})
+
+/* ------------------------------------------------------------------ *
+ * Tai san, no, va gia tri tai san rong
+ *
+ * Bot KHONG tu lay gia thi truong. Vang, co phieu, bat dong san deu do
+ * ban tu cap nhat. Bat tien hon, nhung doi lai khong phu thuoc nguon du
+ * lieu ngoai nao co the chet hoac tra ve gia sai - va ban biet chinh xac
+ * con so trong bao cao tu dau ra.
+ * ------------------------------------------------------------------ */
+
+bot.command('taisan', async (ctx) => {
+  const u = await getOrCreateUser(ctx.from!.id)
+  const arg = ctx.match?.trim()
+  const now = new Date()
+
+  if (!arg) {
+    const rows = await listAssets(u.id)
+    if (!rows.length) {
+      await ctx.reply(
+        '*Chưa khai tài sản nào*\n\n' +
+        'Thêm bằng cách nhắn:\n' +
+        '`/taisan vàng 50tr`\n' +
+        '`/taisan cổ phiếu 120tr`\n' +
+        '`/taisan sổ tiết kiệm 200tr`\n\n' +
+        '_Cập nhật lại cũng dùng đúng lệnh đó — tôi ghi thêm một mốc thời gian ' +
+        'thay vì đè lên số cũ, để sau này vẽ được đường tăng trưởng._',
+        { parse_mode: 'Markdown' },
+      )
+      return
+    }
+
+    const lines = ['*Tài sản đầu tư*', '']
+    for (const a of rows) {
+      lines.push(`${iconFor(a.kind)} *${a.name}* — ${formatVnd(a.value)}`)
+      if (a.gain && a.gainPercent) {
+        const arrow = a.gain.gte(0) ? '▲' : '▼'
+        lines.push(`   ${arrow} ${formatShort(a.gain.abs())} (${a.gainPercent.toFixed(1)}%) so với giá vốn`)
+      }
+    }
+    lines.push('', '_Xoá: `/taisan xoa vàng` · Xem tổng: /taisanrong_')
+    await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' })
+    return
+  }
+
+  const removeMatch = arg.match(/^(xoa|xoá)\s+(.+)$/i)
+  if (removeMatch) {
+    const found = await findAssetLoose(u.id, removeMatch[2])
+    if (!found) return ctx.reply(`Không tìm thấy tài sản "${removeMatch[2]}".`)
+    await archiveAsset(u.id, found.id)
+    await ctx.reply(`🗑 Đã bỏ ${iconFor(found.kind)} ${found.name} khỏi danh sách.`)
+    return
+  }
+
+  // "<ten> <gia tri>" hoac "<ten> <gia tri> von <gia von>"
+  const withCost = arg.match(/^(.+?)\s+(\S+)\s+(?:von|vốn|gia von|giá vốn)\s+(\S+)$/i)
+  const plain = arg.match(/^(.+?)\s+(\S+)$/)
+  const m = withCost ?? plain
+  if (!m) {
+    await ctx.reply('Cú pháp: `/taisan vàng 50tr`', { parse_mode: 'Markdown' })
+    return
+  }
+
+  const value = parseAmount(m[2])
+  if (!value || value.lt(0)) {
+    await ctx.reply(`Không đọc được số tiền "${m[2]}".`, { parse_mode: 'Markdown' })
+    return
+  }
+  const costBasis = withCost ? parseAmount(withCost[3]) ?? undefined : undefined
+
+  const { asset, created } = await upsertAsset(u.id, m[1], value, now, u.timezone, costBasis)
+  await ctx.reply(
+    `${created ? '✅ Đã thêm' : '🔄 Đã cập nhật'} ${iconFor(asset.kind)} *${asset.name}*: ` +
+    `${formatVnd(value)}` +
+    (costBasis ? `\nGiá vốn: ${formatVnd(costBasis)}` : '') +
+    '\n\nXem tổng: /taisanrong',
+    { parse_mode: 'Markdown' },
+  )
+})
+
+bot.command('no', async (ctx) => {
+  const u = await getOrCreateUser(ctx.from!.id)
+  const arg = ctx.match?.trim()
+
+  if (!arg) {
+    const rows = await listDebts(u.id)
+    if (!rows.length) {
+      await ctx.reply(
+        '*Không có khoản nợ nào* 🎉\n\n' +
+        'Nếu có, khai bằng cách nhắn:\n' +
+        '`/no thẻ tín dụng 20tr 24%`\n' +
+        '`/no vay mua xe 150tr 11%`\n\n' +
+        '_Lãi suất là phần quan trọng nhất — nó quyết định nên trả khoản nào trước._',
+        { parse_mode: 'Markdown' },
+      )
+      return
+    }
+
+    const total = rows.reduce((s, d) => s.plus(d.outstanding), new Decimal(0))
+    const monthly = rows.reduce((s, d) => s.plus(d.monthlyInterest), new Decimal(0))
+
+    const lines = ['*Các khoản nợ*', '']
+    rows.forEach((d, i) => {
+      lines.push(
+        `${i + 1}. *${d.name}* — ${formatVnd(d.outstanding)} @ ${d.annualRate.toFixed(1)}%/năm`,
+        `   Lãi ${formatShort(d.monthlyInterest)}/tháng`,
+      )
+    })
+    lines.push(
+      '',
+      `Tổng dư nợ: *${formatVnd(total)}*`,
+      `Tiền lãi phải trả: *${formatVnd(monthly)}/tháng*`,
+    )
+    if (rows.length > 1) {
+      lines.push(
+        '',
+        `_Danh sách xếp theo lãi suất giảm dần — đó cũng là thứ tự nên trả. ` +
+        `Dồn tiền dư vào "${rows[0].name}" trước, các khoản còn lại chỉ trả tối thiểu._`,
+      )
+    }
+    lines.push('', '_Xoá: `/no xoa thẻ tín dụng`_')
+    await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' })
+    return
+  }
+
+  const removeMatch = arg.match(/^(xoa|xoá)\s+(.+)$/i)
+  if (removeMatch) {
+    const found = await findDebtLoose(u.id, removeMatch[2])
+    if (!found) return ctx.reply(`Không tìm thấy khoản nợ "${removeMatch[2]}".`)
+    await removeDebt(u.id, found.id)
+    await ctx.reply(`🗑 Đã xoá khoản nợ ${found.name}.`)
+    return
+  }
+
+  // "<ten> <du no> <lai suat>%"
+  const m = arg.match(/^(.+?)\s+(\S+)\s+([\d.,]+)\s*%?$/)
+  if (!m) {
+    await ctx.reply(
+      'Cú pháp: `/no thẻ tín dụng 20tr 24%`\n\n_Phần cuối là lãi suất %/năm._',
+      { parse_mode: 'Markdown' },
+    )
+    return
+  }
+
+  const outstanding = parseAmount(m[2])
+  const rate = new Decimal(m[3].replace(',', '.'))
+  if (!outstanding || outstanding.lt(0)) {
+    await ctx.reply(`Không đọc được số tiền "${m[2]}".`)
+    return
+  }
+  if (rate.lt(0) || rate.gt(200)) {
+    await ctx.reply(`Lãi suất ${rate}%/năm trông không hợp lý. Kiểm tra lại giúp tôi.`)
+    return
+  }
+
+  const { created } = await upsertDebt(u.id, m[1], outstanding, rate)
+  const monthlyInterest = outstanding.mul(rate).div(100).div(12)
+  await ctx.reply(
+    `${created ? '✅ Đã thêm' : '🔄 Đã cập nhật'} khoản nợ *${m[1].trim()}*\n` +
+    `Dư nợ ${formatVnd(outstanding)} @ ${rate.toFixed(1)}%/năm\n` +
+    `Tiền lãi: *${formatVnd(monthlyInterest)}/tháng*`,
+    { parse_mode: 'Markdown' },
+  )
+})
+
+bot.command('taisanrong', async (ctx) => {
+  const u = await getOrCreateUser(ctx.from!.id)
+  const nw = await snapshotNetWorth(u.id, new Date(), u.timezone)
+
+  const lines = ['*Giá trị tài sản ròng*', '']
+  lines.push(`Tiền mặt & ngân hàng: ${formatVnd(nw.liquid)}`)
+  if (!nw.invested.isZero()) lines.push(`Tài sản đầu tư: ${formatVnd(nw.invested)}`)
+  if (!nw.debt.isZero()) lines.push(`Trừ nợ: −${formatVnd(nw.debt)}`)
+  lines.push('', `*${formatVnd(nw.total)}*`)
+
+  if (nw.previous) {
+    const diff = nw.total.minus(nw.previous.total)
+    if (!diff.isZero()) {
+      const arrow = diff.gt(0) ? '▲' : '▼'
+      lines.push(`${arrow} ${formatShort(diff.abs())} so với ${nw.previous.takenOn}`)
+    }
+  }
+
+  if (nw.allocation.length > 1) {
+    lines.push('', '*Phân bổ*')
+    for (const a of nw.allocation) {
+      lines.push(`${a.icon} ${a.label} — ${formatShort(a.value)} (${a.percent.toFixed(0)}%)`)
+    }
+  }
+
+  if (nw.total.lt(0)) {
+    lines.push('', '🔴 *Tài sản ròng đang âm* — nợ nhiều hơn những gì bạn có.')
+    lines.push('→ Xem /no để biết nên trả khoản nào trước.')
+  }
+
+  /**
+   * Canh bao rui ro tap trung.
+   *
+   * Nguong 60% cho tai san dau tu: dat het vao mot loai nghia la so phan
+   * tai chinh cua ban phu thuoc vao mot thi truong duy nhat. Tien mat
+   * duoc mien vi giu nhieu tien mat khong phai rui ro mat von - no chi
+   * la mat gia dan, mot van de khac han va duoc noi rieng ben duoi.
+   */
+  const CONCENTRATION_LIMIT = 60
+  const topRisky = nw.allocation.find(
+    (a) => a.kind !== 'cash' && a.percent.gte(CONCENTRATION_LIMIT),
+  )
+  if (topRisky) {
+    lines.push(
+      '',
+      `🟡 *${topRisky.label} chiếm ${topRisky.percent.toFixed(0)}% tài sản*`,
+      'Đặt phần lớn vào một loại nghĩa là phụ thuộc vào một thị trường duy nhất.',
+    )
+  }
+
+  const cash = nw.allocation.find((a) => a.kind === 'cash')
+  if (cash && cash.percent.gte(80) && nw.liquid.gt(0) && nw.invested.isZero()) {
+    lines.push(
+      '',
+      '🟡 *Gần như toàn bộ đang nằm ở tiền mặt*',
+      'Tiền mặt không mất vốn nhưng mất giá dần vì lạm phát. ' +
+      'Sau khi quỹ khẩn cấp đủ 3–6 tháng, phần dư nên được cân nhắc chuyển sang kênh sinh lời.',
+    )
+  }
+
+  lines.push('', '_Cập nhật: /taisan · /no · /sodu_')
+  await ctx.reply(lines.join('\n'), { parse_mode: 'Markdown' })
 })
 
 /* ------------------------------------------------------------------ *
