@@ -12,9 +12,13 @@ import {
   listBudgets, setBudget, removeBudget, findCategoryLoose, checkBudgetAlert,
 } from './budget'
 import {
+  parseStatementFile, prepareImport, commitImport, type ImportPreview,
+} from './import'
+import {
   getOrCreateUser, loadLearnedKeywords, learnKeyword, findCategoryByName,
   listCategories, getDefaultAccount, recordTransaction, deleteTransaction,
   listRecent, totalsBetween, setMonthlyIncome, saveInsights, setAccountBalance,
+  savePending, readPending, clearPending,
 } from './ledger'
 
 const OWNER_ID = Number(process.env.OWNER_TELEGRAM_ID || 0)
@@ -70,6 +74,9 @@ bot.command('start', async (ctx) => {
     '/thunhap `25tr` — khai báo thu nhập tháng\n' +
     '/sodu `30tr` — khai số dư hiện có\n' +
     '/danhgia — nhận định & lời khuyên\n\n' +
+    '*Import sao kê*\n' +
+    'Gửi thẳng file .csv hoặc .xlsx từ app ngân hàng vào đây.\n' +
+    'Tôi đọc, tự phân loại, cho bạn xem trước rồi mới ghi.\n\n' +
     '_Khai /thunhap và /sodu trước, rồi /danhgia mới đủ dữ liệu để đánh giá._',
     { parse_mode: 'Markdown' },
   )
@@ -307,6 +314,150 @@ bot.command('xoa', async (ctx) => {
   if (!deleted) return ctx.reply('Không tìm thấy giao dịch đó.')
   await ctx.reply(`🗑 Đã xoá: ${deleted.note || 'giao dịch'} — ${formatVnd(deleted.amount)}`)
 })
+
+/* ------------------------------------------------------------------ *
+ * Import sao ke ngan hang
+ *
+ * Luon dung lai o buoc xem truoc. Sao ke mot thang co the la hang tram
+ * dong; neu bot doc sai cot ma ghi thang vao so thi don dep con met hon
+ * la nhap tay tu dau.
+ * ------------------------------------------------------------------ */
+
+bot.on('message:document', async (ctx) => {
+  const doc = ctx.message.document
+  const name = doc.file_name ?? 'sao-ke'
+
+  const waiting = await ctx.reply('⏳ Đang đọc file…')
+  const u = await getOrCreateUser(ctx.from!.id, ctx.from!.first_name)
+
+  try {
+    const buffer = await downloadTelegramFile(doc.file_id)
+    const parsed = await parseStatementFile(buffer, name)
+    const preview = await prepareImport(u.id, parsed)
+
+    if (!preview.prepared.length) {
+      await ctx.api.editMessageText(
+        ctx.chat.id, waiting.message_id,
+        'Đọc được file nhưng không thấy giao dịch nào. ' +
+        'Kiểm tra xem có đúng file sao kê không.',
+      )
+      return
+    }
+
+    // Giu file_id de luc xac nhan tai lai va doc lai, khong phai luu ca
+    // bang giao dich vao database tam
+    await savePending(u.id, 'import', { fileId: doc.file_id, fileName: name })
+
+    const kb = new InlineKeyboard()
+      .text(`✅ Ghi ${preview.newCount} giao dịch`, 'import:ok')
+      .text('✖ Huỷ', 'import:no')
+
+    await ctx.api.editMessageText(
+      ctx.chat.id, waiting.message_id,
+      renderImportPreview(preview, u.timezone),
+      { parse_mode: 'Markdown', reply_markup: kb },
+    )
+  } catch (e) {
+    await ctx.api.editMessageText(
+      ctx.chat.id, waiting.message_id,
+      `❌ ${(e as Error).message}`,
+    )
+  }
+})
+
+bot.callbackQuery('import:no', async (ctx) => {
+  const u = await getOrCreateUser(ctx.from.id)
+  await clearPending(u.id, 'import')
+  await ctx.answerCallbackQuery('Đã huỷ')
+  await ctx.editMessageText('Đã huỷ. Không ghi gì vào sổ.')
+})
+
+bot.callbackQuery('import:ok', async (ctx) => {
+  const u = await getOrCreateUser(ctx.from.id)
+  const pending = await readPending<{ fileId: string; fileName: string }>(u.id, 'import')
+
+  if (!pending) {
+    await ctx.answerCallbackQuery('Phiên import đã hết hạn')
+    await ctx.editMessageText('Phiên này đã hết hạn. Gửi lại file giúp tôi.')
+    return
+  }
+
+  await ctx.answerCallbackQuery('Đang ghi…')
+  await ctx.editMessageText('⏳ Đang ghi vào sổ…')
+
+  try {
+    const buffer = await downloadTelegramFile(pending.fileId)
+    const parsed = await parseStatementFile(buffer, pending.fileName)
+    const preview = await prepareImport(u.id, parsed)
+
+    const account = await getDefaultAccount(u.id)
+    const n = await commitImport(u.id, preview, account?.id ?? null)
+    await clearPending(u.id, 'import')
+
+    await ctx.editMessageText(
+      `✅ Đã ghi *${n}* giao dịch vào sổ.\n\n` +
+      (preview.uncategorizedCount
+        ? `${preview.uncategorizedCount} giao dịch chưa có danh mục — xem /gannhat để sửa dần.\n\n`
+        : '') +
+      'Nhắn /thang để xem tổng kết.',
+      { parse_mode: 'Markdown' },
+    )
+  } catch (e) {
+    await ctx.editMessageText(`❌ Ghi không thành công: ${(e as Error).message}`)
+  }
+})
+
+/** Tai file tu may chu Telegram ve bo nho */
+async function downloadTelegramFile(fileId: string): Promise<Buffer> {
+  const file = await bot.api.getFile(fileId)
+  if (!file.file_path) throw new Error('Telegram không trả về đường dẫn file.')
+
+  const url = `https://api.telegram.org/file/bot${process.env.TELEGRAM_BOT_TOKEN}/${file.file_path}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`Tải file thất bại (HTTP ${res.status})`)
+
+  return Buffer.from(await res.arrayBuffer())
+}
+
+function renderImportPreview(preview: ImportPreview, tz: string): string {
+  const lines = ['*Xem trước khi ghi vào sổ*', '']
+
+  if (preview.from && preview.to) {
+    lines.push(`Kỳ: ${shortDate(preview.from, tz)} → ${shortDate(preview.to, tz)}`)
+  }
+  lines.push(`Giao dịch mới: *${preview.newCount}*`)
+  if (preview.duplicateCount) {
+    lines.push(`Đã có sẵn trong sổ: ${preview.duplicateCount} _(sẽ bỏ qua)_`)
+  }
+  if (preview.skipped.length) {
+    lines.push(`Dòng không đọc được: ${preview.skipped.length}`)
+  }
+
+  lines.push('')
+  if (!preview.totalExpense.isZero()) lines.push(`Tổng chi: *${formatVnd(preview.totalExpense)}*`)
+  if (!preview.totalIncome.isZero()) lines.push(`Tổng thu: *${formatVnd(preview.totalIncome)}*`)
+
+  if (preview.uncategorizedCount) {
+    lines.push('', `⚠️ ${preview.uncategorizedCount} giao dịch chưa đoán được danh mục.`)
+  }
+
+  // Cho xem vai dong dau de doi chieu voi file goc truoc khi xac nhan
+  const sample = preview.prepared.filter((r) => !r.isDuplicate).slice(0, 5)
+  if (sample.length) {
+    lines.push('', '*Vài dòng đầu*')
+    for (const r of sample) {
+      const sign = r.type === 'income' ? '+' : '−'
+      const what = r.description.slice(0, 32) || '(không có nội dung)'
+      lines.push(
+        `${shortDate(r.occurredAt, tz)}  ${sign}${formatShort(r.amount)}  ` +
+        `${r.categoryName ?? '❓'}\n   _${what}_`,
+      )
+    }
+  }
+
+  lines.push('', `_Nhận diện cột: ${Object.values(preview.detected).join(' · ')}_`)
+  return lines.join('\n')
+}
 
 /* ------------------------------------------------------------------ *
  * Nhap giao dich bang tin nhan tu do

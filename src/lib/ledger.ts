@@ -295,3 +295,52 @@ export async function setAccountBalance(userId: number, amount: Decimal) {
     .where(eq(accounts.id, account.id))
   return account
 }
+
+/* ------------------------------------------------------------------ *
+ * Trang thai dang cho
+ *
+ * Dung cho cac luong nhieu buoc, vi du: bot hoi "co ghi 120 giao dich
+ * nay khong?" roi cho ban bam nut. Co han su dung de mot phien bo do
+ * khong nam lai mai trong database.
+ * ------------------------------------------------------------------ */
+
+const PENDING_TTL_MINUTES = 30
+
+export async function savePending(userId: number, kind: string, payload: unknown) {
+  await db.delete(schema.pendingActions).where(and(
+    eq(schema.pendingActions.userId, userId),
+    eq(schema.pendingActions.kind, kind),
+  ))
+  await db.insert(schema.pendingActions).values({
+    userId,
+    kind,
+    payload: JSON.stringify(payload),
+    expiresAt: new Date(Date.now() + PENDING_TTL_MINUTES * 60_000),
+  })
+}
+
+export async function readPending<T>(userId: number, kind: string): Promise<T | null> {
+  const row = await db.query.pendingActions.findFirst({
+    where: and(
+      eq(schema.pendingActions.userId, userId),
+      eq(schema.pendingActions.kind, kind),
+    ),
+  })
+  if (!row) return null
+  if (row.expiresAt < new Date()) {
+    await clearPending(userId, kind)
+    return null
+  }
+  try {
+    return JSON.parse(row.payload) as T
+  } catch {
+    return null
+  }
+}
+
+export async function clearPending(userId: number, kind: string) {
+  await db.delete(schema.pendingActions).where(and(
+    eq(schema.pendingActions.userId, userId),
+    eq(schema.pendingActions.kind, kind),
+  ))
+}
