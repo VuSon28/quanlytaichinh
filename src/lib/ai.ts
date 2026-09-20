@@ -159,7 +159,11 @@ function systemPrompt(name: string, tz: string, today: string): string {
       'Chuyện trong sổ (đã tiêu bao nhiêu, còn bao nhiêu) thì dùng công cụ đọc sổ, đừng tra web.',
       '- Tra xong nói rõ nguồn và thời điểm, ví dụ "SJC sáng nay". Giá vàng đổi từng giờ, ' +
       'một con số không kèm mốc thời gian là vô dụng.',
-      '- Tra một lần là đủ. Không tìm đi tìm lại cho chắc.',
+      '- Trong một câu trả lời, tra một lần là đủ — đừng tìm đi tìm lại cho chắc.',
+      '- NHƯNG tuyệt đối không lấy lại giá cũ trong đoạn chat phía trên để trả lời câu mới. ' +
+      'Giá thị trường hết hạn ngay khi vừa nói xong. Hỏi lại là phải tra lại.',
+      '- Nếu kết quả tìm được không rõ ngày, hoặc các nguồn lệch nhau, nói thẳng là không chốt ' +
+      'được và bảo người dùng xem trang SJC. Đưa một con số mình không chắc còn tệ hơn không đưa.',
     ] : []),
     '',
     'ĐỊNH DẠNG',
