@@ -19,10 +19,11 @@ Bot ghi chi tiêu bằng tiếng Việt tự nhiên, phân tích sức khỏe t�
 | 0 | Khung dự án, schema database | ✅ Xong |
 | 1 | Bot ghi chi tiêu bằng text, tự phân loại, tự học | ✅ Xong |
 | 2 | Ảnh hóa đơn + tin nhắn thoại | ⬜ Chưa |
-| 3 | Ngân sách, cảnh báo, báo cáo chủ động | ⬜ Chưa |
-| 4 | Import sao kê ngân hàng | ⬜ Chưa |
-| 5 | Đầu tư & tích sản, net worth | ⬜ Chưa |
-| 6 | Web dashboard | ⬜ Chưa |
+| 3 | Ngân sách, cảnh báo, báo cáo chủ động | ✅ Xong |
+| 4 | Import sao kê ngân hàng | ✅ Xong |
+| 5 | Đầu tư & tích sản, net worth | ✅ Xong |
+| 6 | Web dashboard | ✅ Xong |
+| 7 | Trò chuyện tự nhiên bằng Claude | ✅ Xong |
 
 ## Cài đặt
 
@@ -33,7 +34,7 @@ Bot ghi chi tiêu bằng tiếng Việt tự nhiên, phân tích sức khỏe t�
 | Supabase | `DATABASE_URL` (chọn **Transaction pooler**) | [supabase.com](https://supabase.com) |
 | Telegram | `TELEGRAM_BOT_TOKEN` | [@BotFather](https://t.me/BotFather) → `/newbot` |
 | Telegram | `OWNER_TELEGRAM_ID` | [@userinfobot](https://t.me/userinfobot) |
-| Anthropic | `ANTHROPIC_API_KEY` (cho giai đoạn 2+) | [console.anthropic.com](https://console.anthropic.com) |
+| Anthropic | `ANTHROPIC_API_KEY` (để bot trò chuyện được) | [console.anthropic.com](https://console.anthropic.com) |
 | Vercel | — | [vercel.com](https://vercel.com) |
 
 ### 2. Cấu hình
@@ -56,13 +57,15 @@ Chạy hai lần, dùng cho `TELEGRAM_WEBHOOK_SECRET` và `CRON_SECRET`.
 ```bash
 npm install
 npm run db:push
+npm run db:migrate:chat   # bảng lưu mạch trò chuyện
 ```
 
 ### 4. Chạy thử ở máy
 
 ```bash
-npx tsx scripts/test-parser.ts   # kiểm tra bộ đọc tiếng Việt
-npm run dev
+npm test          # toàn bộ kiểm thử, chạy offline, không tốn tiền
+npm run bot       # chạy bot ngay trên máy, không cần deploy
+npm run chat      # thử một lượt trò chuyện thật (cần ANTHROPIC_API_KEY)
 ```
 
 ### 5. Deploy
@@ -102,6 +105,28 @@ Cách viết số tiền bot hiểu: `45k` · `45n` · `45 nghìn` · `45.000` �
 | `/gannhat` | 10 giao dịch gần nhất |
 | `/xoa` | Xoá giao dịch vừa ghi |
 | `/xoa 123` | Xoá giao dịch số 123 |
+| `/quen` | Quên mạch trò chuyện, bắt đầu lại |
+
+### Trò chuyện
+
+Có `ANTHROPIC_API_KEY` thì bot không chỉ ghi chép nữa — cứ nhắn như nhắn cho bạn bè:
+
+```
+tháng này tôi tiêu nhiều quá phải không?
+còn bao nhiêu tiền ăn ngoài nữa?
+có nên mua xe 500 triệu không?
+mệt quá, tháng này tiêu hoang thật sự
+```
+
+Bot nhớ được mạch câu chuyện trong 12 tiếng, nên hỏi tiếp "thế còn tháng trước?" là nó hiểu.
+
+Ba điều đáng nói về cách phần này được xây:
+
+- **Bộ luật vẫn đi trước.** `cafe 45k` không bao giờ chạm tới AI — ghi trong vài mili giây, không tốn một đồng. Chỉ những câu *nghe như đang trò chuyện* mới được chuyển sang Claude.
+- **Định tuyến chặn trước khi ghi.** "Có nên mua xe 500 triệu không?" có chứa một số tiền hợp lệ. Nếu để bộ luật xử lý, bạn vừa bị ghi một khoản chi 500 triệu chỉ vì hỏi một câu. Xem `looksLikeChat()` trong [src/lib/ai.ts](src/lib/ai.ts).
+- **AI không được bịa số.** Nó không đọc thẳng database. Mọi con số phải đi qua một trong chín công cụ đọc/ghi sổ — không có công cụ thì nó không biết, và phải nói là không biết.
+
+Đổi model hoặc mức độ suy nghĩ bằng biến môi trường: `FINBOT_AI_MODEL` (mặc định `claude-opus-5`), `FINBOT_AI_EFFORT` (mặc định `low`).
 
 ## Bảo mật
 
@@ -117,5 +142,7 @@ Cách viết số tiền bot hiểu: `45k` · `45n` · `45 nghìn` · `45.000` �
 | Vercel Hobby | 0đ |
 | Supabase free (500 MB) | 0đ |
 | Telegram API | 0đ |
-| Giai đoạn 1 (không gọi AI) | **0đ** |
-| Giai đoạn 2+ (Claude Haiku cho OCR/voice/tư vấn) | ~15–25k/tháng |
+| Ghi chép bằng bộ luật (không gọi AI) | **0đ** |
+| Trò chuyện qua Claude | tính theo lượt nhắn, xem [pricing](https://www.anthropic.com/pricing) |
+
+Phần ghi chép hằng ngày — thứ bạn dùng nhiều nhất — vẫn miễn phí tuyệt đối. Chỉ những câu hỏi thật sự mới tốn tiền. Muốn rẻ hơn nữa thì đặt `FINBOT_AI_MODEL=claude-haiku-4-5`.

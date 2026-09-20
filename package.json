@@ -9,7 +9,7 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "test": "tsx scripts/test-parser.ts && tsx scripts/test-rules.ts && tsx scripts/test-time.ts && tsx scripts/test-statement.ts",
+    "test": "tsx scripts/test-parser.ts && tsx scripts/test-rules.ts && tsx scripts/test-time.ts && tsx scripts/test-statement.ts && tsx scripts/test-chat.ts",
     "test:statement": "tsx scripts/test-statement.ts",
     "test:import": "tsx --env-file=.env.local scripts/test-import.ts",
     "test:time": "tsx scripts/test-time.ts",
@@ -25,10 +25,13 @@
     "test:dashboard": "tsx --env-file=.env.local scripts/test-dashboard.ts",
     "test:cron": "tsx --env-file=.env.local scripts/test-cron.ts",
     "db:migrate:digest": "tsx --env-file=.env.local scripts/migrate-digest.ts",
-    "setcommands": "tsx --env-file=.env.local scripts/set-commands.ts"
+    "setcommands": "tsx --env-file=.env.local scripts/set-commands.ts",
+    "db:migrate:chat": "tsx --env-file=.env.local scripts/migrate-chat.ts",
+    "test:chat": "tsx scripts/test-chat.ts",
+    "chat": "tsx --env-file=.env.local scripts/test-chat.ts --live"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.70.0",
+    "@anthropic-ai/sdk": "^0.127.0",
     "decimal.js": "^10.6.0",
     "drizzle-orm": "^0.44.5",
     "exceljs": "^4.4.0",

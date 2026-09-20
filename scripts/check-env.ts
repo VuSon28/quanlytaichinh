@@ -35,7 +35,12 @@ let problems = 0
 
 function check(
   key: string,
-  opts: { required: boolean; validate?: (v: string) => string | null },
+  opts: {
+    required: boolean
+    validate?: (v: string) => string | null
+    /** Giai thich chuyen gi xay ra khi de trong */
+    note?: string
+  },
 ) {
   const v = env[key] ?? ''
   if (!v) {
@@ -43,7 +48,7 @@ function check(
       console.log(`  ❌ ${key} — còn trống`)
       problems++
     } else {
-      console.log(`  ⚪ ${key} — trống (chưa cần ở giai đoạn 1)`)
+      console.log(`  ⚪ ${key} — trống${opts.note ? ` (${opts.note})` : ''}`)
     }
     return
   }
@@ -107,8 +112,12 @@ check('OWNER_TELEGRAM_ID', {
   validate: (v) => (/^\d+$/.test(v) ? null : 'phải là số, không có chữ hay @'),
 })
 
-check('ANTHROPIC_API_KEY', { required: false })
-check('CRON_SECRET', { required: false })
+check('ANTHROPIC_API_KEY', {
+  required: false,
+  note: 'bot vẫn ghi chép bình thường, nhưng không trò chuyện được',
+  validate: (v) => (v.startsWith('sk-ant-') ? null : "nên bắt đầu bằng 'sk-ant-'"),
+})
+check('CRON_SECRET', { required: false, note: 'báo cáo định kỳ sẽ không có lớp bảo vệ' })
 
 /* ------------------------------------------------------------------ *
  * Goi that len Telegram de xac nhan token song

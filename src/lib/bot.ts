@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard } from 'grammy'
+import { Bot, InlineKeyboard, type Context } from 'grammy'
 import Decimal from 'decimal.js'
 import { formatVnd, formatShort, parseAmount } from './money'
 import { parseTransaction } from './parser'
@@ -19,6 +19,8 @@ import {
   listDebts, upsertDebt, findDebtLoose, removeDebt, snapshotNetWorth,
 } from './assets'
 import { makeLoginToken } from './dashboard-auth'
+import { isAiEnabled, looksLikeChat, converse } from './ai'
+import { forget } from './chat'
 import {
   getOrCreateUser, loadLearnedKeywords, learnKeyword, findCategoryByName,
   listCategories, getDefaultAccount, recordTransaction, deleteTransaction,
@@ -67,6 +69,14 @@ bot.command('start', async (ctx) => {
     '  • `ăn trưa 55 nghìn`\n' +
     '  • `+20tr lương` (dấu + là khoản thu)\n\n' +
     'Tôi tự đoán danh mục. Lần nào chưa biết thì hỏi bạn một lần rồi nhớ luôn.\n\n' +
+    (isAiEnabled()
+      ? '*Hoặc cứ nói chuyện bình thường*\n' +
+        'Không cần nhớ lệnh nào cả. Hỏi tôi như hỏi một người bạn:\n' +
+        '  • _"tháng này tôi tiêu nhiều quá phải không?"_\n' +
+        '  • _"còn bao nhiêu tiền ăn ngoài nữa?"_\n' +
+        '  • _"có nên mua xe 500 triệu không?"_\n' +
+        'Tôi nhớ được mạch câu chuyện. /quen để bắt đầu lại từ đầu.\n\n'
+      : '') +
     '*Xem lại*\n' +
     '/homnay — chi tiêu hôm nay\n' +
     '/thang — tổng kết tháng này\n' +
@@ -324,6 +334,23 @@ bot.command('xoa', async (ctx) => {
   const deleted = await deleteTransaction(u.id, targetId)
   if (!deleted) return ctx.reply('Không tìm thấy giao dịch đó.')
   await ctx.reply(`🗑 Đã xoá: ${deleted.note || 'giao dịch'} — ${formatVnd(deleted.amount)}`)
+})
+
+/**
+ * Xoa tri nho hoi thoai.
+ *
+ * Khong dung den so sach - giao dich da ghi van con nguyen. Day chi la
+ * cai nut "quen chuyen vua roi di" cho nhung luc ban doi chu de, hoac
+ * khi bot hieu sai mot y nao do va cu bam mai vao no.
+ */
+bot.command('quen', async (ctx) => {
+  const u = await getOrCreateUser(ctx.from!.id)
+  await forget(u.id)
+  await ctx.reply(
+    'Rồi, mình quên chuyện vừa nãy 🙂\n' +
+    '_Sổ sách vẫn còn nguyên, chỉ xoá mạch trò chuyện thôi._',
+    { parse_mode: 'Markdown' },
+  )
 })
 
 bot.command('web', async (ctx) => {
@@ -734,10 +761,30 @@ bot.on('message:text', async (ctx) => {
   if (text.startsWith('/')) return
 
   const u = await getOrCreateUser(ctx.from!.id, ctx.from!.first_name)
+
+  /**
+   * Ba duong di, xep theo thu tu re dan:
+   *
+   *   1. Cau nghe nhu dang tro chuyen  -> AI
+   *   2. Cau ghi chep co so tien       -> bo luat, mien phi, tuc thi
+   *   3. Khong doc ra so tien nao      -> AI (neu bat), khong thi bao loi
+   *
+   * Buoc 1 phai dung TRUOC bo luat. "Co nen mua xe 500 trieu khong?" ma
+   * roi vao bo luat thi ban vua bi ghi mot khoan chi 500 trieu.
+   */
+  if (isAiEnabled() && looksLikeChat(text)) {
+    await talk(ctx, u, text)
+    return
+  }
+
   const learned = await loadLearnedKeywords(u.id)
   const parsed = parseTransaction(text, learned)
 
   if (!parsed) {
+    if (isAiEnabled()) {
+      await talk(ctx, u, text)
+      return
+    }
     await ctx.reply(
       'Tôi không thấy số tiền nào trong tin nhắn.\n' +
       'Thử: `cafe 45k` hoặc `ăn trưa 55 nghìn`',
@@ -827,6 +874,58 @@ bot.callbackQuery(/^pick:(\d+)$/, async (ctx) => {
   )
   await warnIfOverBudget(ctx, u, parsed.type, categoryId)
 })
+
+/* ------------------------------------------------------------------ *
+ * Tro chuyen
+ * ------------------------------------------------------------------ */
+
+async function talk(
+  ctx: Context,
+  u: { id: number; displayName: string | null; timezone: string },
+  text: string,
+) {
+  /**
+   * Doc so sach roi nghi cau tra loi mat vai giay. Khong co dau hieu gi
+   * thi cam giac nhu bot chet - nen hien "dang go...". Telegram tu tat
+   * sau 5 giay, vi vay phai bao lai dinh ky cho den khi tra loi xong.
+   */
+  await ctx.replyWithChatAction('typing').catch(() => {})
+  const keepTyping = setInterval(() => {
+    ctx.replyWithChatAction('typing').catch(() => {})
+  }, 4500)
+
+  try {
+    const { reply } = await converse(
+      { id: u.id, displayName: u.displayName, timezone: u.timezone },
+      text,
+    )
+    await replySafe(ctx, reply)
+  } catch (err) {
+    console.error('[ai] khong tra loi duoc:', err)
+    await ctx.reply(
+      'Mình đang trục trặc một chút, chưa nghĩ ra câu trả lời. Thử lại sau nhé.\n' +
+      'Ghi chi tiêu thì vẫn dùng bình thường được: `cafe 45k`',
+      { parse_mode: 'Markdown' },
+    )
+  } finally {
+    clearInterval(keepTyping)
+  }
+}
+
+/**
+ * Gui tin nhan co dinh dang, va van gui duoc khi dinh dang hong.
+ *
+ * Markdown cua Telegram rat de vo: mot dau * le loi hay dau _ giua ten
+ * file la ca tin nhan bi tu choi. Khi do gui lai dang tho con hon la
+ * de nguoi dung khong nhan duoc gi.
+ */
+async function replySafe(ctx: Context, text: string) {
+  try {
+    await ctx.reply(text, { parse_mode: 'Markdown' })
+  } catch {
+    await ctx.reply(text)
+  }
+}
 
 /* ------------------------------------------------------------------ *
  * Canh bao ngan sach

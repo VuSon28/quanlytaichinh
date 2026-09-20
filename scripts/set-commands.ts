@@ -42,6 +42,8 @@ const COMMANDS = [
   { command: 'no', description: '💳 Nợ — /no thẻ tín dụng 20tr 24%' },
   { command: 'taisanrong', description: '📈 Giá trị tài sản ròng' },
 
+  { command: 'quen', description: '🧹 Quên mạch trò chuyện, bắt đầu lại' },
+
   { command: 'web', description: '🖥 Mở dashboard có biểu đồ' },
   { command: 'start', description: '❓ Hướng dẫn sử dụng' },
 ]

@@ -295,3 +295,25 @@ export const netWorthSnapshots = pgTable('net_worth_snapshots', {
   /** liquid + invested - debt */
   total: numeric('total', { precision: 15, scale: 2 }).notNull(),
 }, (t) => [uniqueIndex('nw_user_date_idx').on(t.userId, t.takenOn)])
+
+/* ------------------------------------------------------------------ *
+ * Lich su tro chuyen
+ *
+ * Bot chi thanh "nguoi ban" khi no NHO cau truoc ban vua noi gi. Moi
+ * request tren Vercel la mot tien trinh moi tinh, khong con gi trong bo
+ * nho, nen lich su phai nam trong database - khong co cho nao khac.
+ *
+ * Chi luu phan chu: cau ban nhan va cau bot tra loi. Cac buoc goi cong
+ * cu o giua khong luu - chung chi co y nghia trong mot luot, va luu lai
+ * se lam phinh context moi lan goi AI.
+ * ------------------------------------------------------------------ */
+
+export const chatMessages = pgTable('chat_messages', {
+  id: bigserial('id', { mode: 'number' }).primaryKey(),
+  userId: bigint('user_id', { mode: 'number' }).notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  /** 'user' hoac 'assistant' */
+  role: text('role').notNull(),
+  content: text('content').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => [index('chat_user_time_idx').on(t.userId, t.createdAt)])
