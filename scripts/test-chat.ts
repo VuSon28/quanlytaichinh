@@ -102,15 +102,42 @@ async function live() {
 
   console.log(`Bạn:  ${cau}`)
   const t0 = Date.now()
-  const { reply, toolCalls, webSearches } = await converse(
+  const { reply, toolCalls, webSearches, usage } = await converse(
     { id: u.id, displayName: u.displayName, timezone: u.timezone },
     cau,
   )
-  console.log(`\nBot:  ${reply}`)
-  console.log(
-    `\n(${toolCalls} lần đọc/ghi sổ, ${webSearches} lần tìm web, ` +
-    `${((Date.now() - t0) / 1000).toFixed(1)}s)\n`,
-  )
+  console.log(`\nBot:  ${reply}\n`)
+
+  /**
+   * Bang gia theo trieu token. Chi de UOC LUONG cho de hinh dung -
+   * con so chinh xac luon nam o Console, khong phai o day.
+   */
+  const PRICE: Record<string, { in: number; out: number }> = {
+    'claude-haiku-4-5': { in: 1, out: 5 },
+    'claude-sonnet-5': { in: 2, out: 10 },
+    'claude-opus-5': { in: 5, out: 25 },
+  }
+  const model = process.env.FINBOT_AI_MODEL || 'claude-opus-5'
+  const p = PRICE[model] ?? PRICE['claude-opus-5']
+
+  const cost =
+    (usage.input / 1e6) * p.in +
+    (usage.cacheWrite / 1e6) * p.in * 1.25 +
+    (usage.cacheRead / 1e6) * p.in * 0.1 +
+    (usage.output / 1e6) * p.out +
+    webSearches * 0.01
+
+  console.log(`Model          : ${model}`)
+  console.log(`Token vào      : ${usage.input.toLocaleString('vi-VN')}`)
+  console.log(`Token ra       : ${usage.output.toLocaleString('vi-VN')}`)
+  console.log(`Ghi bộ đệm     : ${usage.cacheWrite.toLocaleString('vi-VN')}`)
+  console.log(`Đọc bộ đệm     : ${usage.cacheRead.toLocaleString('vi-VN')}` +
+    (usage.cacheRead === 0 ? '   ← bộ đệm KHÔNG ăn' : ''))
+  console.log(`Đọc/ghi sổ     : ${toolCalls} lần`)
+  console.log(`Tìm web        : ${webSearches} lần` +
+    (webSearches ? `  (${(webSearches * 0.01).toFixed(3)} USD riêng phần này)` : ''))
+  console.log(`Thời gian      : ${((Date.now() - t0) / 1000).toFixed(1)}s`)
+  console.log(`ƯỚC TÍNH       : ${cost.toFixed(4)} USD cho lượt này\n`)
   process.exit(0)
 }
 

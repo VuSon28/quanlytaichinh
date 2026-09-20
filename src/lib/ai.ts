@@ -183,31 +183,34 @@ function systemPrompt(name: string, tz: string, today: string): string {
  * Moi cong cu la mot cua so nho nhin vao so sach that. Model khong doc
  * thang database - no chi hoi duoc qua may cai cua so nay. Do la co y:
  * cai gi khong co cong cu thi model khong lam duoc, ke ca khi no muon.
+ *
+ * Mo ta viet khong dau va that ngan, khac han cac chuoi hien ra cho
+ * nguoi dung. Ly do la tien: toan bo danh sach nay duoc gui lai TRONG
+ * MOI tin nhan, va tieng Viet co dau ngon gap hai ba lan token so voi
+ * cung mot y viet khong dau. Day la doan chu duy nhat trong du an ma
+ * chi mot minh model doc - nen no duoc toi uu cho may, khong cho nguoi.
  * ------------------------------------------------------------------ */
 
 const TOOLS: Anthropic.Tool[] = [
   {
     name: 'ghi_giao_dich',
     description:
-      'Ghi một khoản thu hoặc chi vào sổ. Chỉ dùng khi người dùng nói về khoản tiền ĐÃ tiêu ' +
-      'hoặc ĐÃ nhận. Không dùng cho khoản đang cân nhắc, đang hỏi giá, hay chỉ nhắc đến.',
+      'Ghi khoan thu/chi vao so. CHI dung khi tien DA tieu hoac DA nhan. ' +
+      'Khong dung cho khoan dang can nhac hay chi nhac den.',
     input_schema: {
       type: 'object',
       properties: {
-        so_tien: { type: 'number', description: 'Số tiền VND, luôn dương. Ví dụ 45000' },
+        so_tien: { type: 'number', description: 'VND, duong. Vi du 45000' },
         loai: { type: 'string', enum: ['chi', 'thu'] },
-        danh_muc: {
-          type: 'string',
-          description: 'Tên danh mục, ví dụ "Ăn ngoài", "Đi lại". Bỏ trống nếu không chắc.',
-        },
-        ghi_chu: { type: 'string', description: 'Mô tả ngắn, ví dụ "cà phê với Lan"' },
+        danh_muc: { type: 'string', description: 'Vi du "An ngoai". Bo trong neu khong chac.' },
+        ghi_chu: { type: 'string' },
       },
       required: ['so_tien', 'loai'],
     },
   },
   {
     name: 'xem_tong_ket',
-    description: 'Xem tổng thu chi của một khoảng thời gian, kèm chi tiết từng danh mục.',
+    description: 'Tong thu chi mot khoang thoi gian, kem tung danh muc.',
     input_schema: {
       type: 'object',
       properties: {
@@ -221,45 +224,44 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'xem_giao_dich_gan_day',
-    description: 'Danh sách giao dịch gần nhất, kèm mã giao dịch để xoá nếu cần.',
+    description: 'Giao dich gan nhat, kem ma de xoa.',
     input_schema: {
       type: 'object',
-      properties: { so_luong: { type: 'number', description: 'Mặc định 10, tối đa 30' } },
+      properties: { so_luong: { type: 'number', description: 'Mac dinh 10, toi da 30' } },
     },
   },
   {
     name: 'xem_tinh_hinh',
     description:
-      'Bức tranh tài chính tổng thể tháng này: thu nhập, chi tiêu, tỷ lệ tiết kiệm, quỹ khẩn ' +
-      'cấp, nợ, và các nhận định đã tính sẵn. Dùng khi người dùng hỏi "tình hình thế nào", ' +
-      '"tôi tiêu có nhiều không", hay xin lời khuyên.',
+      'Buc tranh tong the thang nay: thu, chi, ty le tiet kiem, quy khan cap, no, ' +
+      'nhan dinh tinh san. Dung khi hoi "tinh hinh the nao" hay xin loi khuyen.',
     input_schema: { type: 'object', properties: {} },
   },
   {
     name: 'xem_ngan_sach',
-    description: 'Hạn mức từng danh mục tháng này và đã dùng bao nhiêu phần trăm.',
+    description: 'Han muc tung danh muc thang nay va da dung bao nhieu %.',
     input_schema: { type: 'object', properties: {} },
   },
   {
     name: 'dat_ngan_sach',
-    description: 'Đặt hạn mức chi tiêu tháng này cho một danh mục.',
+    description: 'Dat han muc thang nay cho mot danh muc.',
     input_schema: {
       type: 'object',
       properties: {
         danh_muc: { type: 'string' },
-        so_tien: { type: 'number', description: 'Hạn mức VND' },
+        so_tien: { type: 'number', description: 'Han muc VND' },
       },
       required: ['danh_muc', 'so_tien'],
     },
   },
   {
     name: 'xem_tai_san_rong',
-    description: 'Tài sản, nợ và giá trị tài sản ròng hiện tại.',
+    description: 'Tai san, no va gia tri tai san rong.',
     input_schema: { type: 'object', properties: {} },
   },
   {
     name: 'xoa_giao_dich',
-    description: 'Xoá một giao dịch theo mã. Lấy mã từ xem_giao_dich_gan_day.',
+    description: 'Xoa giao dich theo ma, lay tu xem_giao_dich_gan_day.',
     input_schema: {
       type: 'object',
       properties: { ma_giao_dich: { type: 'number' } },
@@ -269,8 +271,8 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: 'khai_bao',
     description:
-      'Lưu thu nhập hàng tháng hoặc số dư hiện có. Hai con số này là nền để tính tỷ lệ tiết ' +
-      'kiệm và quỹ khẩn cấp — thiếu chúng thì mọi đánh giá đều vô nghĩa.',
+      'Luu thu nhap thang hoac so du hien co. Thieu hai con so nay thi ' +
+      'moi danh gia deu vo nghia.',
     input_schema: {
       type: 'object',
       properties: {
@@ -538,6 +540,21 @@ export interface ConverseResult {
    * Dem rieng de ban nhin duoc ngay khi no tang bat thuong.
    */
   webSearches: number
+  /**
+   * Token that su da dung, cong don ca vong lap.
+   *
+   * Khong co con so nay thi moi cau noi ve chi phi deu la phong doan -
+   * va phong doan sai lech muoi may lan la chuyen binh thuong, nhat la
+   * khi ket qua tim kiem web do thang vao ngu canh.
+   */
+  usage: {
+    input: number
+    output: number
+    /** Token ghi VAO bo dem, dat hon token thuong ~25% */
+    cacheWrite: number
+    /** Token doc TU bo dem, re hon token thuong ~90% */
+    cacheRead: number
+  }
 }
 
 let client: Anthropic | null = null
@@ -563,6 +580,7 @@ export async function converse(u: AiUser, text: string): Promise<ConverseResult>
   let toolCalls = 0
   let webSearches = 0
   let reply = ''
+  const usage = { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 }
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const response = await getClient().messages.create({
@@ -582,6 +600,11 @@ export async function converse(u: AiUser, text: string): Promise<ConverseResult>
       tools: WEB_SEARCH_ON ? [...TOOLS, WEB_SEARCH_TOOL] : TOOLS,
       messages,
     })
+
+    usage.input += response.usage.input_tokens
+    usage.output += response.usage.output_tokens
+    usage.cacheWrite += response.usage.cache_creation_input_tokens ?? 0
+    usage.cacheRead += response.usage.cache_read_input_tokens ?? 0
 
     const said = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
@@ -643,9 +666,22 @@ export async function converse(u: AiUser, text: string): Promise<ConverseResult>
     reply = 'Mình hơi rối chỗ này. Bạn nhắn lại giúp mình một câu ngắn hơn được không?'
   }
 
+  /**
+   * In ra log cua may chu moi luot.
+   *
+   * Khong co dong nay thi cau hoi "thang nay sao ton the" chi tra loi
+   * duoc bang phong doan - va phong doan ve token sai lech muoi may
+   * lan la chuyen thuong. Xem o Vercel -> Logs.
+   */
+  console.log(
+    `[ai] model=${MODEL} in=${usage.input} out=${usage.output} ` +
+    `cacheW=${usage.cacheWrite} cacheR=${usage.cacheRead} ` +
+    `tools=${toolCalls} web=${webSearches}`,
+  )
+
   await remember(u.id, 'user', text)
   await remember(u.id, 'assistant', reply)
   await pruneOldChat(u.id)
 
-  return { reply, toolCalls, webSearches }
+  return { reply, toolCalls, webSearches, usage }
 }
