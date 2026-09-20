@@ -102,12 +102,15 @@ async function live() {
 
   console.log(`Bạn:  ${cau}`)
   const t0 = Date.now()
-  const { reply, toolCalls } = await converse(
+  const { reply, toolCalls, webSearches } = await converse(
     { id: u.id, displayName: u.displayName, timezone: u.timezone },
     cau,
   )
   console.log(`\nBot:  ${reply}`)
-  console.log(`\n(${toolCalls} lần gọi công cụ, ${((Date.now() - t0) / 1000).toFixed(1)}s)\n`)
+  console.log(
+    `\n(${toolCalls} lần đọc/ghi sổ, ${webSearches} lần tìm web, ` +
+    `${((Date.now() - t0) / 1000).toFixed(1)}s)\n`,
+  )
   process.exit(0)
 }
 

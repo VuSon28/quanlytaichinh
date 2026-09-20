@@ -52,6 +52,36 @@ const SUPPORTS_EFFORT = !/haiku/i.test(MODEL)
 /** Chan vong lap chay mai neu model cu goi cong cu khong dung */
 const MAX_TOOL_ROUNDS = 8
 
+/* ------------------------------------------------------------------ *
+ * Tim kiem web
+ *
+ * Gia vang, ty gia, gia co phieu - nhung con so nam ngoai so sach cua
+ * ban. Khong co cong cu nay thi bot chi biet noi "minh chiu", va no da
+ * noi dung: tu bia ra mot con so gia vang con te hon nhieu.
+ *
+ * Nhung tim kiem DAT hon han mot cau tro chuyen thuong. Vi vay co hai
+ * cai phanh: gioi han so lan moi cau, va mot lenh tat han bang bien moi
+ * truong khi ban thay hoa don tang.
+ * ------------------------------------------------------------------ */
+
+const WEB_SEARCH_ON = process.env.FINBOT_WEB_SEARCH !== 'off'
+
+/** Toi da bao nhieu lan tim cho MOT cau hoi */
+const WEB_SEARCH_MAX_USES = Number(process.env.FINBOT_WEB_SEARCH_MAX || 2)
+
+/**
+ * Ban moi cua cong cu tim kiem chi chay tren dong Opus/Sonnet doi gan
+ * day. Haiku va cac model cu hon phai dung ban co - goi nham ban la
+ * loi 404, khong phai lo di.
+ */
+const MODERN_SEARCH = /^claude-(opus-(5|4-[678])|sonnet-(5|4-6)|fable)/.test(MODEL)
+
+const WEB_SEARCH_TOOL = {
+  type: MODERN_SEARCH ? 'web_search_20260209' : 'web_search_20250305',
+  name: 'web_search',
+  max_uses: WEB_SEARCH_MAX_USES,
+} as const
+
 export function isAiEnabled(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY)
 }
@@ -121,6 +151,16 @@ function systemPrompt(name: string, tz: string, today: string): string {
     `- Khi ${name} mới chỉ NHẮC đến một con số chứ chưa tiêu (ví dụ "có nên mua xe 500 triệu không"), ` +
     'tuyệt đối không ghi vào sổ.',
     '- Không chắc thì hỏi lại một câu, đừng ghi bừa rồi sửa sau.',
+    ...(WEB_SEARCH_ON ? [
+      '',
+      'TRA CỨU GIÁ THỊ TRƯỜNG',
+      '- Bạn tra web được: giá vàng SJC/DOJI, tỷ giá ngoại tệ, giá cổ phiếu, lãi suất ngân hàng.',
+      '- Chỉ tra khi người dùng thật sự hỏi một con số ngoài thị trường. ' +
+      'Chuyện trong sổ (đã tiêu bao nhiêu, còn bao nhiêu) thì dùng công cụ đọc sổ, đừng tra web.',
+      '- Tra xong nói rõ nguồn và thời điểm, ví dụ "SJC sáng nay". Giá vàng đổi từng giờ, ' +
+      'một con số không kèm mốc thời gian là vô dụng.',
+      '- Tra một lần là đủ. Không tìm đi tìm lại cho chắc.',
+    ] : []),
     '',
     'ĐỊNH DẠNG',
     '- Telegram chỉ hiểu *đậm* và _nghiêng_. Đừng dùng tiêu đề markdown, bảng, hay khối code.',
@@ -487,8 +527,13 @@ async function runTool(
 
 export interface ConverseResult {
   reply: string
-  /** So lan model goi cong cu - huu ich khi xem log va do chi phi */
+  /** So lan doc/ghi so - mien phi, chi ton chut token */
   toolCalls: number
+  /**
+   * So lan tim kiem web - day moi la thu ton tien that.
+   * Dem rieng de ban nhin duoc ngay khi no tang bat thuong.
+   */
+  webSearches: number
 }
 
 let client: Anthropic | null = null
@@ -512,6 +557,7 @@ export async function converse(u: AiUser, text: string): Promise<ConverseResult>
   ]
 
   let toolCalls = 0
+  let webSearches = 0
   let reply = ''
 
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -529,16 +575,40 @@ export async function converse(u: AiUser, text: string): Promise<ConverseResult>
         text: systemPrompt(name, u.timezone, today),
         cache_control: { type: 'ephemeral' },
       }],
-      tools: TOOLS,
+      tools: WEB_SEARCH_ON ? [...TOOLS, WEB_SEARCH_TOOL] : TOOLS,
       messages,
     })
 
     const said = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === 'text')
       .map((b) => b.text)
-      .join('\n')
+      /**
+       * Noi bang chuoi rong, KHONG phai ky tu xuong dong.
+       *
+       * Khi co trich dan nguon, Claude cat mot cau thanh nhieu khoi van
+       * ban lien nhau. Noi bang '\n' se dam dau dong vao giua cau:
+       * "ty gia mua vao - ban ra la\n24.401 - 26.863 d".
+       */
+      .join('')
       .trim()
     if (said) reply = said
+
+    // Tim kiem chay ben may chu Anthropic nen khong di qua runTool -
+    // phai dem rieng o day, neu khong chi phi that se vo hinh.
+    webSearches += response.content.filter(
+      (b) => b.type === 'server_tool_use' && b.name === 'web_search',
+    ).length
+
+    /**
+     * Cong cu tim kiem chay ben phia may chu Anthropic, va khi no can
+     * them luot thi tra ve 'pause_turn'. Day khong phai loi - chi la
+     * "toi chua xong, goi lai di". Khong xu ly nhanh nay thi cau tra
+     * loi bi cat ngang ma khong bao gi ca.
+     */
+    if (response.stop_reason === 'pause_turn') {
+      messages.push({ role: 'assistant', content: response.content })
+      continue
+    }
 
     if (response.stop_reason !== 'tool_use') break
 
@@ -573,5 +643,5 @@ export async function converse(u: AiUser, text: string): Promise<ConverseResult>
   await remember(u.id, 'assistant', reply)
   await pruneOldChat(u.id)
 
-  return { reply, toolCalls }
+  return { reply, toolCalls, webSearches }
 }

@@ -126,7 +126,27 @@ Ba điều đáng nói về cách phần này được xây:
 - **Định tuyến chặn trước khi ghi.** "Có nên mua xe 500 triệu không?" có chứa một số tiền hợp lệ. Nếu để bộ luật xử lý, bạn vừa bị ghi một khoản chi 500 triệu chỉ vì hỏi một câu. Xem `looksLikeChat()` trong [src/lib/ai.ts](src/lib/ai.ts).
 - **AI không được bịa số.** Nó không đọc thẳng database. Mọi con số phải đi qua một trong chín công cụ đọc/ghi sổ — không có công cụ thì nó không biết, và phải nói là không biết.
 
-Đổi model hoặc mức độ suy nghĩ bằng biến môi trường: `FINBOT_AI_MODEL` (mặc định `claude-opus-5`), `FINBOT_AI_EFFORT` (mặc định `low`).
+### Tra giá thị trường
+
+Bot tra web được giá vàng SJC, tỷ giá, giá cổ phiếu, lãi suất:
+
+```
+giá vàng SJC hôm nay bao nhiêu?
+tỷ giá USD thế nào rồi?
+```
+
+Nó luôn kèm mốc thời gian và nguồn — một con số giá vàng không có mốc thời gian là vô dụng.
+
+Tìm kiếm **đắt hơn hẳn** một câu trò chuyện thường (~0,01 USD mỗi lần), nên có hai cái phanh: tối đa 2 lần tìm cho mỗi câu, và câu hỏi về sổ sách thì không bao giờ tra web. Tắt hẳn bằng `FINBOT_WEB_SEARCH=off`.
+
+### Biến môi trường
+
+| Biến | Mặc định | Việc |
+|---|---|---|
+| `FINBOT_AI_MODEL` | `claude-opus-5` | Model dùng cho trò chuyện |
+| `FINBOT_AI_EFFORT` | `low` | Độ sâu suy nghĩ (dòng Haiku không nhận) |
+| `FINBOT_WEB_SEARCH` | bật | Đặt `off` để tắt tra web |
+| `FINBOT_WEB_SEARCH_MAX` | `2` | Số lần tìm tối đa mỗi câu |
 
 ## Bảo mật
 
@@ -144,5 +164,6 @@ Ba điều đáng nói về cách phần này được xây:
 | Telegram API | 0đ |
 | Ghi chép bằng bộ luật (không gọi AI) | **0đ** |
 | Trò chuyện qua Claude | tính theo lượt nhắn, xem [pricing](https://www.anthropic.com/pricing) |
+| Mỗi lần tra giá thị trường | ~0,01 USD |
 
 Phần ghi chép hằng ngày — thứ bạn dùng nhiều nhất — vẫn miễn phí tuyệt đối. Chỉ những câu hỏi thật sự mới tốn tiền. Muốn rẻ hơn nữa thì đặt `FINBOT_AI_MODEL=claude-haiku-4-5`.
